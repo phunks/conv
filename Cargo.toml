@@ -1,0 +1,39 @@
+[package]
+name = "conv"
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+description = "converter tool"
+keywords = ["egui", "converter", "utility"]
+readme = "README.md"
+homepage = "https://github.com/phunks/conv"
+repository = "https://github.com/phunks/conv"
+
+[profile.release]
+debug = false
+strip = "symbols"
+lto = "fat"
+codegen-units = 1
+
+
+[dependencies]
+env_logger = "0.11.5"
+eframe = "0.29.1"
+egui_extras = "0.29.1"
+log = "0.4.22"
+strum = { version = "0.26.3", features = ["derive"] }
+strum_macros = "0.26.3"
+itertools = "0.13.0"
+regex = { version = "1.11" }
+base64 = "0.22.1"
+url-escape = "0.1.1"
+rustc-serialize = "0.3.25"
+html-escape = "0.2.13"
+charset = "0.1.5"
+utf7-imap = "0.3.2"
+flate2 = "1.0.35"
+inflate = "0.4.5"
+sha2 = { version = "0.10", default-features = false }
+digest = { version = "0.10.7", features = ["alloc"] }
+md5 = "0.7.0"
+sha1 = "0.11.0-pre.4"
