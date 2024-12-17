@@ -7,7 +7,8 @@ mod conv;
 fn main() -> eframe::Result {
     env_logger::init(); // Log to stderr (if you run with `RUST_LOG=debug`).
     let options = eframe::NativeOptions {
-        viewport: egui::ViewportBuilder::default().with_inner_size([500.0, 190.0]),
+        viewport: egui::ViewportBuilder::default().with_inner_size([500.0, 190.0])
+            .with_resizable(false),
         ..Default::default()
     };
     eframe::run_native(
@@ -31,7 +32,7 @@ fn add_font(ctx: &egui::Context) {
     let aa = include_bytes!("../assets/HackGen-Regular.ttf");
     fonts
         .font_data
-        .insert("hackgen".to_owned(), FontData::from_static(aa));
+        .insert("hackgen".to_owned(), FontData::from_static(aa).into());
     fonts
         .families
         .get_mut(&FontFamily::Proportional)

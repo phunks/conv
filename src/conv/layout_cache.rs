@@ -25,7 +25,7 @@ pub fn layout_job(egui_style: &egui::Style, text: &str) -> egui::text::LayoutJob
 
     if !text.is_empty() {
         job.append(
-            &text,
+            text,
             0.0,
             format_from_style(egui_style),
         );

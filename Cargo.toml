@@ -1,6 +1,6 @@
 [package]
 name = "conv"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2021"
 license = "MIT"
 description = "converter tool"
@@ -18,8 +18,8 @@ codegen-units = 1
 
 [dependencies]
 env_logger = "0.11.5"
-eframe = "0.29.1"
-egui_extras = "0.29.1"
+eframe = "0.30.0"
+egui_extras = "0.30.0"
 log = "0.4.22"
 strum = { version = "0.26.3", features = ["derive"] }
 strum_macros = "0.26.3"

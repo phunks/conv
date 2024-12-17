@@ -1,30 +1,28 @@
 
-use crate::conv::enum_variants::{Conv, Digest};
+use crate::conv::enum_variants::{Base64Kind, BinaryKind, Conv, Digest, EscapeKind};
 use eframe::egui;
-use eframe::egui::{ ScrollArea};
+use eframe::egui::{ScrollArea, Ui};
 use strum::{EnumMessage, VariantArray};
 
+#[derive(Default)]
 pub struct Editor {
-    code: String,
-    converter: Conv,
-    digest: Digest,
+    pub code: String,
+    pub menu: Selected,
     highlighter: crate::conv::LayoutCache,
+}
+
+#[derive(Default)]
+pub struct Selected {
+    pub converter: Conv,
+    pub digest: Digest,
+    pub base64: Base64Kind,
+    pub binary: BinaryKind,
+    pub escape: EscapeKind
 }
 
 impl PartialEq for Editor {
     fn eq(&self, other: &Self) -> bool {
         self.code == other.code
-    }
-}
-
-impl Default for Editor {
-    fn default() -> Self {
-        Self {
-            code: "".to_owned(),
-            converter: Conv::ToBase64,
-            digest: Digest::Md5,
-            highlighter: Default::default(),
-        }
     }
 }
 
@@ -36,36 +34,23 @@ impl Editor {
     }
 
     pub fn ui(&mut self, ui: &mut egui::Ui) {
-        let Self { converter, digest, .. } = self;
-
-        let conv_name = |c: Conv| c.get_message().unwrap();
-        let conv_comment = |c: Conv| c.get_documentation().unwrap();
-        let crypt_name = |c: Digest| c.get_message().unwrap();
-        let crypt_comment = |c: Digest| c.get_documentation().unwrap();
+        let Self { menu, .. } = self;
 
         ui.horizontal(|ui| {
-            egui::ComboBox::from_id_salt("converter")
-                .selected_text(conv_name(*converter))
-                .show_ui(ui, |ui| {
-                    for conv in Conv::VARIANTS {
-                        ui.selectable_value(converter, *conv, conv_name(*conv)).on_hover_ui(|ui| {
-                            ui.style_mut().interaction.selectable_labels = true;
-                            ui.label(conv_comment(*conv));
-                        });
-                    }
-                });
-            match converter {
+            combobox::<Conv>(ui, "converter", &mut menu.converter);
+
+            match menu.converter {
                 Conv::Crypt => {
-                    egui::ComboBox::from_id_salt("crypt")
-                        .selected_text(crypt_name(*digest))
-                        .show_ui(ui, |ui| {
-                            for crypt in Digest::VARIANTS {
-                                ui.selectable_value(digest, *crypt, crypt_name(*crypt)).on_hover_ui(|ui| {
-                                    ui.style_mut().interaction.selectable_labels = true;
-                                    ui.label(crypt_comment(*crypt));
-                                });
-                            }
-                        });
+                    combobox::<Digest>(ui, "crypt", &mut menu.digest);
+                },
+                Conv::Base64 => {
+                    combobox::<Base64Kind>(ui, "base64", &mut menu.base64);
+                },
+                Conv::Binary => {
+                    combobox::<BinaryKind>(ui, "base64", &mut menu.binary);
+                },
+                Conv::Escape => {
+                    combobox::<EscapeKind>(ui, "base64", &mut menu.escape);
                 },
                 _ => {}
             }
@@ -81,7 +66,7 @@ impl Editor {
                 .id_salt("rendered")
                 .show(&mut columns[1], |ui| {
                     ui.set_min_width(240.0);
-                    crate::conv::convert(ui, &self.code, &self.converter, &self.digest);
+                    crate::conv::convert(ui, self);
                 });
         });
     }
@@ -105,4 +90,20 @@ impl Editor {
                 .layouter(&mut layouter),
         );
     }
+}
+
+fn combobox<T>(ui: &mut Ui, salt: &str, var: &mut T)
+    where T: EnumMessage + VariantArray + PartialEq + Clone
+{
+    egui::ComboBox::from_id_salt(salt)
+        .selected_text(var.get_message().unwrap())
+        .show_ui(ui, |ui| {
+            for v in T::VARIANTS {
+                ui.selectable_value(var, v.clone(), v.get_message().unwrap())
+                    .on_hover_ui(|ui| {
+                        ui.style_mut().interaction.selectable_labels = true;
+                        ui.label(v.get_documentation().unwrap());
+                    });
+            }
+        });
 }
