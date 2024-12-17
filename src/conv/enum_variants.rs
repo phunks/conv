@@ -126,11 +126,11 @@ pub enum EscapeKind {
     #[strum(message = "Url Decode")]
     UrlDecode,
     /// To js string (JS6)
-    /// ex: '𝕊☺a' = '\u1d54a\u263a\u61'
+    /// ex: '𝕊☺a' = '\u{1d54a}\u{263a}\u{61}'
     #[strum(message = "To JS String")]
     ToJsString,
     /// from js string (JS6)
-    /// ex: '\u1d54a\u263a\u61' = '𝕊☺a'
+    /// ex: '\u{1d54a}\u{263a}\u61' = '𝕊☺a'
     #[strum(message = "From JS String")]
     FromJsString,
     /// To HTML Numeric Entities

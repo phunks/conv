@@ -41,7 +41,7 @@ lazy_regex!(
     RE_LF:  r"\n",
     RE_PAD: r"=+$",
     RE_0X:  r"0[x|X](?<b>[0-9a-fA-F]{2})", // 2 digit hex string ex: 0x0a
-    RE_BSU: r"\\u(?<b>[0-9a-fA-F]+)",
+    RE_BSU: r"\\u\{?(?<b>[0-9a-fA-F]+)\}?",
     RE_HS:  r"&#[x|X](?<b>[0-9a-fA-F]+)"
 );
 
@@ -150,9 +150,9 @@ pub fn item_ui(ui: &mut Ui, editor: &Editor) {
                     ui.label(url_escape::decode(&editor.code));
                 }
                 EscapeKind::ToJsString => {
-                    // \u3042\u3042..
+                    // \u{3042}\u{3042}..
                     ui.label(format!(r"\u{}", char_bytestring(&editor.code)
-                        .iter().map(|x|format!("{:x}",x)).join(r"\u")));
+                        .iter().map(|x|format!("{{{:x}}}",x)).join(r"\u")));
                 }
                 EscapeKind::FromJsString => {
                     let a = RE_BSU.captures_iter(&editor.code)
