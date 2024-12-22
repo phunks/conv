@@ -47,6 +47,13 @@ lazy_regex!(
 
 pub fn item_ui(ui: &mut Ui, editor: &Editor) {
 
+    let collector =
+        | a: &LazyLock<Regex> , b: &String| a.captures_iter(b)
+        .map(|cap| cap["b"].to_owned())
+        .map(|x| parse_unicode(&x))
+        .filter_map(|x|x)
+        .collect::<Vec<_>>().iter().join("");
+
     match editor.menu.converter {
         Conv::Base64 => {
             match editor.menu.base64 {
@@ -155,26 +162,14 @@ pub fn item_ui(ui: &mut Ui, editor: &Editor) {
                         .iter().map(|x|format!("{{{:x}}}",x)).join(r"\u")));
                 }
                 EscapeKind::FromJsString => {
-                    let a = RE_BSU.captures_iter(&editor.code)
-                        .map(|cap| cap["b"].to_owned())
-                        .map(|x| parse_unicode(&x))
-                        .filter_map(|x|x.map(|a| a))
-                        .collect::<Vec<_>>().iter().join("");
-
-                    ui.label(a);
+                    ui.label(collector(&RE_BSU, &editor.code));
                 }
                 EscapeKind::ToHtmlNumEntities => {
                     ui.label(format!(r"&#x{}", char_bytestring(&editor.code)
                         .iter().map(|x|format!("{:x}",x)).join(r", &#x")));
                 }
                 EscapeKind::FromHtmlNumEntities => {
-                    let a = RE_HS.captures_iter(&editor.code)
-                        .map(|cap| cap["b"].to_owned())
-                        .map(|x| parse_unicode(&x))
-                        .filter_map(|x|x.map(|a| a))
-                        .collect::<Vec<_>>().iter().join("");
-
-                    ui.label(a);
+                    ui.label(collector(&RE_HS, &editor.code));
                 }
                 EscapeKind::ToHtmlSanitise => {
                     ui.label(html_escape::encode_safe(&editor.code));

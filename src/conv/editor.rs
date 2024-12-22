@@ -47,10 +47,10 @@ impl Editor {
                     combobox::<Base64Kind>(ui, "base64", &mut menu.base64);
                 },
                 Conv::Binary => {
-                    combobox::<BinaryKind>(ui, "base64", &mut menu.binary);
+                    combobox::<BinaryKind>(ui, "binary", &mut menu.binary);
                 },
                 Conv::Escape => {
-                    combobox::<EscapeKind>(ui, "base64", &mut menu.escape);
+                    combobox::<EscapeKind>(ui, "escape", &mut menu.escape);
                 },
                 _ => {}
             }
