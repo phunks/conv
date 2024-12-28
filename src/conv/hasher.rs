@@ -1,4 +1,3 @@
-
 use digest::DynDigest;
 use rustc_serialize::hex::ToHex;
 

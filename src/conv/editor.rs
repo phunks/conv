@@ -1,14 +1,17 @@
-
 use crate::conv::enum_variants::{Base64Kind, BinaryKind, Conv, Digest, EscapeKind};
 use eframe::egui;
-use eframe::egui::{ScrollArea, Ui};
+use eframe::egui::SizeHint::Size;
+use eframe::egui::{Align, Image, Response, ScrollArea, Sense, Ui};
+use eframe::epaint::ColorImage;
+use egui_extras::image::load_svg_bytes_with_size;
 use strum::{EnumMessage, VariantArray};
 
 #[derive(Default)]
 pub struct Editor {
     pub code: String,
     pub menu: Selected,
-    highlighter: crate::conv::LayoutCache,
+    pub text: String,
+    cache: crate::conv::LayoutCache,
 }
 
 #[derive(Default)]
@@ -17,7 +20,7 @@ pub struct Selected {
     pub digest: Digest,
     pub base64: Base64Kind,
     pub binary: BinaryKind,
-    pub escape: EscapeKind
+    pub escape: EscapeKind,
 }
 
 impl PartialEq for Editor {
@@ -52,8 +55,16 @@ impl Editor {
                 Conv::Escape => {
                     combobox::<EscapeKind>(ui, "escape", &mut menu.escape);
                 },
-                _ => {}
             }
+
+            ui.with_layout(egui::Layout::right_to_left(Align::RIGHT), |ui| {
+                let mut icon = LoadIcon { texture: None };
+
+                let response = icon.ui(ui, load_copy_icon);
+                if response.clicked() {
+                    self.code = self.text.clone();
+                }
+            })
         });
 
         ui.separator();
@@ -72,12 +83,10 @@ impl Editor {
     }
 
     fn editor_ui(&mut self, ui: &mut egui::Ui) {
-        let Self {
-            code, highlighter, ..
-        } = self;
+        let Self { code, cache, .. } = self;
 
         let mut layouter = |ui: &egui::Ui, text: &str, wrap_width: f32| {
-            let mut layout_job = highlighter.memorise(ui.style(), text);
+            let mut layout_job = cache.memorise(ui.style(), text);
             layout_job.wrap.max_width = wrap_width;
             ui.fonts(|f| f.layout_job(layout_job))
         };
@@ -93,7 +102,8 @@ impl Editor {
 }
 
 fn combobox<T>(ui: &mut Ui, salt: &str, var: &mut T)
-    where T: EnumMessage + VariantArray + PartialEq + Clone
+where
+    T: EnumMessage + VariantArray + PartialEq + Clone,
 {
     egui::ComboBox::from_id_salt(salt)
         .selected_text(var.get_message().unwrap())
@@ -106,4 +116,23 @@ fn combobox<T>(ui: &mut Ui, salt: &str, var: &mut T)
                     });
             }
         });
+}
+
+struct LoadIcon {
+    texture: Option<egui::TextureHandle>,
+}
+
+impl LoadIcon {
+    fn ui(&mut self, ui: &mut egui::Ui, image: fn() -> ColorImage) -> Response {
+        let texture: &egui::TextureHandle = self.texture.get_or_insert_with(|| {
+            ui.ctx()
+                .load_texture("copy_icon", image(), Default::default())
+        });
+        ui.add(Image::new((texture.id(), texture.size_vec2())).sense(Sense::click()))
+    }
+}
+
+const COPY_ICON: &[u8; 4532] = include_bytes!("../../assets/icon_copy.svg");
+fn load_copy_icon() -> ColorImage {
+    load_svg_bytes_with_size(COPY_ICON, Option::from(Size(21, 21))).unwrap()
 }

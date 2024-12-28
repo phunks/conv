@@ -1,4 +1,3 @@
-
 use eframe::egui;
 use egui::TextStyle;
 
@@ -24,11 +23,7 @@ pub fn layout_job(egui_style: &egui::Style, text: &str) -> egui::text::LayoutJob
     let mut job = egui::text::LayoutJob::default();
 
     if !text.is_empty() {
-        job.append(
-            text,
-            0.0,
-            format_from_style(egui_style),
-        );
+        job.append(text, 0.0, format_from_style(egui_style));
     }
     job
 }

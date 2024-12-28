@@ -1,12 +1,6 @@
-
 use strum::{EnumMessage, VariantArray};
 
-
-#[derive(
-    Default, Copy, Clone,
-    Debug, PartialEq,
-    VariantArray, EnumMessage,
-)]
+#[derive(Default, Copy, Clone, Debug, PartialEq, VariantArray, EnumMessage)]
 #[strum(serialize_all = "kebab-case")]
 pub enum Conv {
     #[default]
@@ -19,22 +13,12 @@ pub enum Conv {
     /// escape
     #[strum(message = "Escape          ▸")]
     Escape,
-    /// to utf-7 (rfc 3501)
-    #[strum(message = "To UTF-7")]
-    ToUtf7,
-    /// from utf-7 (rfc 3501)
-    #[strum(message = "From UTF-7")]
-    FromUtf7,
     /// Crypt
     #[strum(message = "Crypt           ▸")]
     Crypt,
 }
 
-#[derive(
-    Default, Copy, Clone,
-    Debug, PartialEq,
-    VariantArray, EnumMessage,
-)]
+#[derive(Default, Copy, Clone, Debug, PartialEq, VariantArray, EnumMessage)]
 #[strum(serialize_all = "kebab-case")]
 pub enum Digest {
     #[default]
@@ -58,11 +42,7 @@ pub enum Digest {
     Sha512,
 }
 
-#[derive(
-    Default, Copy, Clone,
-    Debug, PartialEq,
-    VariantArray, EnumMessage,
-    )]
+#[derive(Default, Copy, Clone, Debug, PartialEq, VariantArray, EnumMessage)]
 #[strum(serialize_all = "kebab-case")]
 pub enum Base64Kind {
     #[default]
@@ -83,11 +63,7 @@ pub enum Base64Kind {
     FromDeflatedSaml,
 }
 
-#[derive(
-    Default, Copy, Clone,
-    Debug, PartialEq,
-    VariantArray, EnumMessage,
-)]
+#[derive(Default, Copy, Clone, Debug, PartialEq, VariantArray, EnumMessage)]
 #[strum(serialize_all = "kebab-case")]
 pub enum BinaryKind {
     #[default]
@@ -107,13 +83,17 @@ pub enum BinaryKind {
     /// ex: '0xf0, 0x9d, 0x95, 0x8a, 0xe2, 0x98, 0xba, 0x61' = '𝕊☺a'
     #[strum(message = "From byte string")]
     FromByteString,
+    /// To Hexadecimal String
+    /// ex: '𝕊☺a' = '120138 9786 97'
+    #[strum(message = "To Hexadecimal String")]
+    ToHexDecimalString,
+    /// From Hexadecimal String
+    /// ex: '120138 9786 97' = '𝕊☺a'
+    #[strum(message = "From Hexadecimal String")]
+    FromHexDecimalString,
 }
 
-#[derive(
-    Default, Copy, Clone,
-    Debug, PartialEq,
-    VariantArray, EnumMessage,
-)]
+#[derive(Default, Copy, Clone, Debug, PartialEq, VariantArray, EnumMessage)]
 #[strum(serialize_all = "kebab-case")]
 pub enum EscapeKind {
     #[default]
@@ -149,4 +129,10 @@ pub enum EscapeKind {
     /// ex: '&#9787;' = '☻'
     #[strum(message = "From Html Sanitise")]
     FromHtmlSanitise,
+    /// to utf-7 (rfc 3501)
+    #[strum(message = "To UTF-7")]
+    ToUtf7,
+    /// from utf-7 (rfc 3501)
+    #[strum(message = "From UTF-7")]
+    FromUtf7,
 }

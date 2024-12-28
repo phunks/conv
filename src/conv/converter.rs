@@ -1,26 +1,23 @@
-use std::io::Write;
 use base64::engine::general_purpose;
-use base64::{Engine as _, engine, alphabet};
+use base64::{alphabet, engine, Engine as _};
 use eframe::egui;
-use egui::{
-    vec2, Align, Layout, TextStyle,
-    Ui,
-};
+use egui::{vec2, Align, Layout, TextStyle, Ui};
+use std::io::Write;
 
-use std::sync::LazyLock;
-use flate2::Compression;
+use crate::conv::enum_variants::{Base64Kind, BinaryKind, Conv, EscapeKind};
+use crate::conv::hasher::hasher;
+use crate::conv::{enum_variants, Editor};
+use crate::lazy_regex;
 use flate2::write::DeflateEncoder;
+use flate2::Compression;
 use inflate::InflateWriter;
 use itertools::Itertools;
 use regex::Regex;
-use rustc_serialize::hex::{ToHex, FromHex};
+use rustc_serialize::hex::{FromHex, ToHex};
 use sha1::{Digest, Sha1};
-use crate::conv::{Editor, enum_variants};
-use crate::conv::hasher::hasher;
-use crate::conv::enum_variants::{Base64Kind, BinaryKind, Conv, EscapeKind};
-use crate::lazy_regex;
+use std::sync::LazyLock;
 
-pub fn convert(ui: &mut Ui, editor: &Editor) {
+pub fn convert(ui: &mut Ui, editor: &mut Editor) {
     let initial_size = vec2(
         ui.available_width(),
         ui.spacing().interact_size.y, // Assume there will be
@@ -42,17 +39,19 @@ lazy_regex!(
     RE_PAD: r"=+$",
     RE_0X:  r"0[x|X](?<b>[0-9a-fA-F]{2})", // 2 digit hex string ex: 0x0a
     RE_BSU: r"\\u\{?(?<b>[0-9a-fA-F]+)\}?",
-    RE_HS:  r"&#[x|X](?<b>[0-9a-fA-F]+)"
+    RE_HS:  r"&#[x|X](?<b>[0-9a-fA-F]+)",
+    RE_DEC: r"(?<b>\d+)"
 );
 
-pub fn item_ui(ui: &mut Ui, editor: &Editor) {
-
-    let collector =
-        | a: &LazyLock<Regex> , b: &String| a.captures_iter(b)
-        .map(|cap| cap["b"].to_owned())
-        .map(|x| parse_unicode(&x))
-        .filter_map(|x|x)
-        .collect::<Vec<_>>().iter().join("");
+pub fn item_ui(ui: &mut Ui, editor: &mut Editor) {
+    let collector = |a: &LazyLock<Regex>, b: &String| {
+        a.captures_iter(b)
+            .map(|cap| cap["b"].to_owned())
+            .filter_map(|x| parse_unicode(&x))
+            .collect::<Vec<_>>()
+            .iter()
+            .join("")
+    };
 
     match editor.menu.converter {
         Conv::Base64 => {
@@ -60,175 +59,188 @@ pub fn item_ui(ui: &mut Ui, editor: &Editor) {
                 Base64Kind::ToBase64 => {
                     // rfc 4648
                     let text = RE_LF.replace_all(&editor.code, "");
-                    let enc = engine::GeneralPurpose::new(
-                        &alphabet::STANDARD,
-                        general_purpose::PAD).encode(&*text);
-                    ui.label(enc);
-                }
+                    editor.text =
+                        engine::GeneralPurpose::new(&alphabet::STANDARD, general_purpose::PAD)
+                            .encode(&*text);
+                },
                 Base64Kind::ToBase64Url => {
                     // rfc 4648 url safe
                     let text = RE_LF.replace_all(&editor.code, "");
-                    let enc = engine::GeneralPurpose::new(
-                        &alphabet::URL_SAFE,
-                        general_purpose::NO_PAD).encode(&*text);
-                    ui.label(enc);
-                }
+                    editor.text =
+                        engine::GeneralPurpose::new(&alphabet::URL_SAFE, general_purpose::NO_PAD)
+                            .encode(&*text);
+                },
                 Base64Kind::FromBase64 => {
                     let text = tr_safe_url(&RE_PAD.replace_all(&editor.code, ""));
-                    let dec = match engine::GeneralPurpose::new(
+                    editor.text = match engine::GeneralPurpose::new(
                         &alphabet::URL_SAFE,
-                        general_purpose::NO_PAD)
-                        .decode(&*text)  {
+                        general_purpose::NO_PAD,
+                    )
+                    .decode(&*text)
+                    {
                         Ok(a) => String::from_utf8_lossy(&a).into_owned(),
                         Err(e) => e.to_string(),
                     };
-                    ui.label(dec);
-                }
+                },
                 Base64Kind::ToDeflatedSaml => {
                     let mut buf = vec![];
                     {
-                        let mut enc =
-                            DeflateEncoder::new(&mut buf, Compression::default());
+                        let mut enc = DeflateEncoder::new(&mut buf, Compression::default());
                         enc.write_all(editor.code.as_ref()).unwrap();
                     }
-                    let enc = general_purpose::STANDARD.encode(&buf);
-                    ui.label(enc);
-                }
+                    editor.text = general_purpose::STANDARD.encode(&buf);
+                },
                 Base64Kind::FromDeflatedSaml => {
                     let text = RE_PAD.replace_all(&editor.code, "");
                     let mut inf = InflateWriter::new(Vec::new());
-                    let dec = match engine::GeneralPurpose::new(
+                    editor.text = match engine::GeneralPurpose::new(
                         &alphabet::STANDARD,
-                        general_purpose::NO_PAD)
-                        .decode(&*text)  {
-                        Ok(a) => {
-                            match inf.write(a.as_ref()) {
-                                Err(e) => e.to_string(),
-                                _ => String::from_utf8_lossy(&inf.finish().unwrap()).into_owned()
-                            }
+                        general_purpose::NO_PAD,
+                    )
+                    .decode(&*text)
+                    {
+                        Ok(a) => match inf.write(a.as_ref()) {
+                            Err(e) => e.to_string(),
+                            _ => String::from_utf8_lossy(&inf.finish().unwrap()).into_owned(),
                         },
                         Err(e) => e.to_string(),
                     };
-                    ui.label(dec);
-                }
+                },
             }
-        }
+        },
         Conv::Binary => {
             match editor.menu.binary {
                 BinaryKind::HexEncode => {
-                    ui.label(editor.code.as_bytes().to_hex());
-                }
+                    editor.text = editor.code.as_bytes().to_hex();
+                },
                 BinaryKind::HexDecode => {
-                    let a = match &editor.code.from_hex() {
+                    editor.text = match &editor.code.from_hex() {
                         Ok(dec) => String::from_utf8_lossy(dec).into_owned(),
                         Err(e) => e.to_string(),
                     };
-                    ui.label(a);
-                }
+                },
                 BinaryKind::ToByteString => {
                     // 0x31, 0x34
-                    ui.label(format!(r"0x{}", utf8_bytestring(&editor.code)
-                        .iter().map(|x|format!("{:02x}",x)).join(r", 0x")));
-                }
+                    editor.text = format!(
+                        r"0x{}",
+                        utf8_bytestring(&editor.code)
+                            .iter()
+                            .map(|x| format!("{:02x}", x))
+                            .join(r", 0x")
+                    );
+                },
                 BinaryKind::FromByteString => {
                     // 0x31, 0x34
-                    let a = RE_0X.captures_iter(&editor.code)
+                    let a = RE_0X
+                        .captures_iter(&editor.code)
                         .map(|cap| cap["b"].to_owned())
                         .collect::<Vec<_>>()
-                        .to_owned().join("");
+                        .join("");
 
-                    let a = match a.from_hex() {
-                        Ok(dec) => {
-                            String::from_utf8_lossy(&dec).into_owned()
-                        },
+                    editor.text = match a.from_hex() {
+                        Ok(dec) => String::from_utf8_lossy(&dec).into_owned(),
                         Err(e) => e.to_string(),
                     };
-                    ui.label(a);
-                }
+                },
+                BinaryKind::ToHexDecimalString => {
+                    editor.text = char_bytestring(&editor.code).into_iter().join(" ");
+                },
+                BinaryKind::FromHexDecimalString => {
+                    editor.text = RE_DEC
+                        .captures_iter(&editor.code)
+                        .map(|cap| cap["b"].to_owned())
+                        .filter_map(|x| x.parse::<u32>().ok())
+                        .filter_map(char::from_u32)
+                        .collect::<String>();
+                },
             }
-        }
+        },
         Conv::Escape => {
             match editor.menu.escape {
                 EscapeKind::UrlEncode => {
                     // TODO rfc 3986
-                    ui.label(url_escape::encode_www_form_urlencoded(&editor.code));
-                }
+                    editor.text = url_escape::encode_www_form_urlencoded(&editor.code).into();
+                },
                 EscapeKind::UrlDecode => {
-                    ui.label(url_escape::decode(&editor.code));
-                }
+                    editor.text = url_escape::decode(&editor.code).into();
+                },
                 EscapeKind::ToJsString => {
-                    // \u{3042}\u{3042}..
-                    ui.label(format!(r"\u{}", char_bytestring(&editor.code)
-                        .iter().map(|x|format!("{{{:x}}}",x)).join(r"\u")));
-                }
+                    editor.text = format!(
+                        r"\u{}",
+                        char_bytestring(&editor.code)
+                            .iter()
+                            .map(|x| format!("{{{:x}}}", x))
+                            .join(r"\u")
+                    );
+                },
                 EscapeKind::FromJsString => {
-                    ui.label(collector(&RE_BSU, &editor.code));
-                }
+                    editor.text = collector(&RE_BSU, &editor.code);
+                },
                 EscapeKind::ToHtmlNumEntities => {
-                    ui.label(format!(r"&#x{}", char_bytestring(&editor.code)
-                        .iter().map(|x|format!("{:x}",x)).join(r", &#x")));
-                }
+                    editor.text = format!(
+                        r"&#x{}",
+                        char_bytestring(&editor.code)
+                            .iter()
+                            .map(|x| format!("{:x}", x))
+                            .join(r", &#x")
+                    );
+                },
                 EscapeKind::FromHtmlNumEntities => {
-                    ui.label(collector(&RE_HS, &editor.code));
-                }
+                    editor.text = collector(&RE_HS, &editor.code);
+                },
                 EscapeKind::ToHtmlSanitise => {
-                    ui.label(html_escape::encode_safe(&editor.code));
-                }
+                    editor.text = html_escape::encode_safe(&editor.code).into();
+                },
                 EscapeKind::FromHtmlSanitise => {
-                    ui.label(html_escape::decode_html_entities(&editor.code));
-                }
+                    editor.text = html_escape::decode_html_entities(&editor.code).into();
+                },
+                EscapeKind::ToUtf7 => {
+                    // rfc 3501
+                    editor.text = utf7_imap::encode_utf7_imap(editor.code.to_string());
+                },
+                EscapeKind::FromUtf7 => {
+                    editor.text = utf7_imap::decode_utf7_imap(editor.code.to_string());
+                },
             }
-        }
+        },
 
-        Conv::ToUtf7 => {
-            // rfc 3501
-            let enc = utf7_imap::encode_utf7_imap(editor.code.to_string());
-            ui.label(enc);
-        }
-        Conv::FromUtf7 => {
-            let dec = utf7_imap::decode_utf7_imap(editor.code.to_string());
-            ui.label(dec);
-        }
-        Conv::Crypt => {
-            match editor.menu.digest {
-                enum_variants::Digest::Md5 => {
-                    let digest = md5::compute(&editor.code);
-                    ui.label(digest.to_hex());
-                }
-                enum_variants::Digest::Sha1 => {
-                    let mut h = Sha1::new();
-                    sha1::Digest::update(&mut h, <str as AsRef<[u8]>>::as_ref(&editor.code));
-                    ui.label(String::from_utf8_lossy((*h.finalize().to_hex()).as_ref()));
-                }
-                enum_variants::Digest::Sha224 => {
-                    ui.label(hasher("sha224", &editor.code));
-                }
-                enum_variants::Digest::Sha256 => {
-                    ui.label(hasher("sha256", &editor.code));
-                }
-                enum_variants::Digest::Sha384 => {
-                    ui.label(hasher("sha384", &editor.code));
-                }
-                enum_variants::Digest::Sha512 => {
-                    ui.label(hasher("sha512", &editor.code));
-                }
-            }
-        }
+        Conv::Crypt => match editor.menu.digest {
+            enum_variants::Digest::Md5 => {
+                let digest = md5::compute(&editor.code);
+                editor.text = digest.to_hex();
+            },
+            enum_variants::Digest::Sha1 => {
+                let mut h = Sha1::new();
+                sha1::Digest::update(&mut h, <str as AsRef<[u8]>>::as_ref(&editor.code));
+                editor.text = String::from_utf8_lossy((*h.finalize().to_hex()).as_ref()).into();
+            },
+            enum_variants::Digest::Sha224 => {
+                editor.text = hasher("sha224", &editor.code);
+            },
+            enum_variants::Digest::Sha256 => {
+                editor.text = hasher("sha256", &editor.code);
+            },
+            enum_variants::Digest::Sha384 => {
+                editor.text = hasher("sha384", &editor.code);
+            },
+            enum_variants::Digest::Sha512 => {
+                editor.text = hasher("sha512", &editor.code);
+            },
+        },
     }
+    ui.label(&editor.text);
 }
 
-const TR_SAFE_URL: [char; 4] = [
-  '/', '+', '_', '-'
-];
+const TR_SAFE_URL: [char; 4] = ['/', '+', '_', '-'];
 
 #[inline]
 fn tr_safe_url(text: &str) -> String {
     let mut buf: String = String::with_capacity(text.len());
     for c in text.chars() {
-        if let Some(idx) = TR_SAFE_URL.iter()
-            .take(2)
-            .position(|x| x == &c)
-            {buf.push(TR_SAFE_URL[idx + 2]); continue}
+        if let Some(idx) = TR_SAFE_URL.iter().take(2).position(|x| x == &c) {
+            buf.push(TR_SAFE_URL[idx + 2]);
+            continue;
+        }
         buf.push(c);
     }
     buf
@@ -242,8 +254,7 @@ fn utf8_bytestring(text: &str) -> Vec<u8> {
             x.encode_utf8(&mut b);
             b
         })
-        .flat_map(|x| x.into_iter()
-            .filter(|x| x != &0))
+        .flat_map(|x| x.into_iter().filter(|x| x != &0))
         .collect::<Vec<_>>()
 }
 
@@ -256,28 +267,17 @@ fn utf16_bytestring(text: &str) -> Vec<u16> {
             x.encode_utf16(&mut b);
             b
         })
-        .flat_map(|x| x.into_iter()
-            .filter(|x| x != &0))
+        .flat_map(|x| x.into_iter().filter(|x| x != &0))
         .collect::<Vec<_>>()
 }
 
 #[inline]
 fn char_bytestring(text: &str) -> Vec<u32> {
-    text.chars()
-        .map(|x| {
-            x as u32
-        })
-        .collect::<Vec<_>>()
+    text.chars().map(|x| x as u32).collect::<Vec<_>>()
 }
 
-
+#[inline]
 fn parse_unicode(input: &str) -> Option<char> {
     let unicode = u32::from_str_radix(input, 16).ok();
     char::from_u32(unicode?)
-}
-
-#[allow(unused)]
-fn parse_unicode_digit(input: &str) -> Option<char> {
-    let unicode = u32::from_str_radix(input, 16).ok();
-    char::from_digit(unicode?, 16)
 }
