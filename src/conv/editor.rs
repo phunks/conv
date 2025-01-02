@@ -1,3 +1,4 @@
+
 use crate::conv::enum_variants::{Base64Kind, BinaryKind, Conv, Digest, EscapeKind};
 use eframe::egui;
 use eframe::egui::SizeHint::Size;
@@ -60,7 +61,7 @@ impl Editor {
             ui.with_layout(egui::Layout::right_to_left(Align::RIGHT), |ui| {
                 let mut icon = LoadIcon { texture: None };
 
-                let response = icon.ui(ui, load_copy_icon);
+                let response = icon.ui(ui);
                 if response.clicked() {
                     self.code = self.text.clone();
                 }
@@ -123,16 +124,23 @@ struct LoadIcon {
 }
 
 impl LoadIcon {
-    fn ui(&mut self, ui: &mut egui::Ui, image: fn() -> ColorImage) -> Response {
+    fn ui(&mut self, ui: &mut egui::Ui) -> Response {
         let texture: &egui::TextureHandle = self.texture.get_or_insert_with(|| {
-            ui.ctx()
-                .load_texture("copy_icon", image(), Default::default())
+            ui.ctx().load_texture(
+                "copy_icon",
+                load_copy_icon(ui.ctx().style().visuals.dark_mode),
+                Default::default(),
+            )
         });
         ui.add(Image::new((texture.id(), texture.size_vec2())).sense(Sense::click()))
     }
 }
 
-const COPY_ICON: &[u8; 4533] = include_bytes!("../../assets/icon_copy.svg");
-fn load_copy_icon() -> ColorImage {
-    load_svg_bytes_with_size(COPY_ICON, Option::from(Size(21, 21))).unwrap()
+const COPY_ICON_LIGHT: &[u8; 4533] = include_bytes!("../../assets/icon_copy_light.svg");
+const COPY_ICON_DARK: &[u8; 4533] = include_bytes!("../../assets/icon_copy_dark.svg");
+fn load_copy_icon(dark: bool) -> ColorImage {
+    if dark {
+        return load_svg_bytes_with_size(COPY_ICON_DARK, Some(Size(21, 21))).unwrap();
+    }
+    load_svg_bytes_with_size(COPY_ICON_LIGHT, Some(Size(21, 21))).unwrap()
 }

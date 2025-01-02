@@ -1,7 +1,7 @@
+#![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 use crate::conv::Editor;
 use eframe::egui::SizeHint::Size;
 use eframe::egui::{Context, FontData, FontDefinitions, FontFamily};
-use eframe::epaint::ColorImage;
 use eframe::{egui, Frame};
 use egui_extras::image::load_svg_bytes_with_size;
 
@@ -35,13 +35,6 @@ fn main() -> eframe::Result {
     )
 }
 
-pub fn load_image_from_memory(image_data: &[u8]) -> Result<ColorImage, image::ImageError> {
-    let image = image::load_from_memory(image_data)?;
-    let size = [image.width() as _, image.height() as _];
-    let image_buffer = image.to_rgba8();
-    let pixels = image_buffer.as_flat_samples();
-    Ok(ColorImage::from_rgba_unmultiplied(size, pixels.as_slice()))
-}
 impl eframe::App for Editor {
     fn update(&mut self, ctx: &Context, _frame: &mut Frame) {
         self.panels(ctx);

@@ -78,7 +78,7 @@
      id="layer3"
      inkscape:label="Layer 3">
     <path
-       style="fill:#4d4d4d;stroke-width:0.264583"
+       style="fill:#3c3c3c;stroke-width:0.264583"
        id="rect2"
        width="15.791884"
        height="15.930409"
@@ -93,7 +93,7 @@
      id="layer2"
      inkscape:label="Layer 2">
     <rect
-       style="fill:#999999;stroke-width:0.237471"
+       style="fill:#a2a2a2;stroke-width:0.237471"
        id="rect1"
        width="8.0344677"
        height="3.0475566"
@@ -101,7 +101,7 @@
        y="3.7651176" />
     <path
        sodipodi:type="star"
-       style="fill:#999999;stroke-width:0.264583"
+       style="fill:#a2a2a2;stroke-width:0.264583"
        id="path1"
        inkscape:flatsided="true"
        sodipodi:sides="3"
@@ -117,7 +117,7 @@
        inkscape:transform-center-x="-0.66240831"
        transform="matrix(0.76448606,0,0,1,6.4218101,3.6265924)" />
     <rect
-       style="fill:#999999;stroke-width:0.237471"
+       style="fill:#a2a2a2;stroke-width:0.237471"
        id="rect3"
        width="8.0344677"
        height="3.0475566"
@@ -126,7 +126,7 @@
        transform="scale(-1,1)" />
     <path
        sodipodi:type="star"
-       style="fill:#999999;stroke-width:0.264583"
+       style="fill:#a2a2a2;stroke-width:0.264583"
        id="path3"
        inkscape:flatsided="true"
        sodipodi:sides="3"

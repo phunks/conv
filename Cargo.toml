@@ -1,6 +1,6 @@
 [package]
 name = "conv"
-version = "0.2.3"
+version = "0.2.4"
 edition = "2021"
 license = "MIT"
 description = "converter tool"
@@ -23,7 +23,7 @@ egui_extras = { version = "0.30.0", features = ["all_loaders"] }
 log = "0.4.22"
 strum = { version = "0.26.3", features = ["derive"] }
 strum_macros = "0.26.3"
-itertools = "0.13.0"
+itertools = "0.14"
 regex = { version = "1.11" }
 base64 = "0.22.1"
 url-escape = "0.1.1"
