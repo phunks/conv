@@ -132,7 +132,7 @@ impl LoadIcon {
     }
 }
 
-const COPY_ICON: &[u8; 4532] = include_bytes!("../../assets/icon_copy.svg");
+const COPY_ICON: &[u8; 4533] = include_bytes!("../../assets/icon_copy.svg");
 fn load_copy_icon() -> ColorImage {
     load_svg_bytes_with_size(COPY_ICON, Option::from(Size(21, 21))).unwrap()
 }
