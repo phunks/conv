@@ -1,10 +1,10 @@
 mod converter;
 mod editor;
-mod enum_variants;
-mod hasher;
+pub mod enum_variants;
 mod layout_cache;
-mod macros;
+mod modules;
+mod util;
+mod icon;
 
-pub use converter::convert;
 pub use editor::Editor;
 pub use layout_cache::LayoutCache;

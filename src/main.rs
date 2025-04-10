@@ -2,7 +2,7 @@
 use crate::conv::Editor;
 use eframe::egui::SizeHint::Size;
 use eframe::egui::{Context, FontData, FontDefinitions, FontFamily};
-use eframe::{egui, Frame};
+use eframe::{Frame, egui};
 use egui_extras::image::load_svg_bytes_with_size;
 
 mod conv;
@@ -16,8 +16,6 @@ fn main() -> eframe::Result {
 
     let options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
-            .with_inner_size([500.0, 193.0])
-            .with_resizable(false)
             .with_icon(egui::IconData {
                 rgba: Vec::from(icon.as_raw()),
                 width: size,
@@ -41,7 +39,7 @@ impl eframe::App for Editor {
     }
 }
 
-fn add_font(ctx: &egui::Context) {
+fn add_font(ctx: &Context) {
     let mut fonts = FontDefinitions::default();
     let aa = include_bytes!("../assets/HackGen-Regular.ttf");
     fonts
@@ -52,5 +50,11 @@ fn add_font(ctx: &egui::Context) {
         .get_mut(&FontFamily::Proportional)
         .unwrap()
         .insert(0, "hackgen".to_owned());
+    fonts
+        .families
+        .get_mut(&FontFamily::Monospace)
+        .unwrap()
+        .push("hackgen".to_owned());
+
     ctx.set_fonts(fonts);
 }

@@ -4,23 +4,41 @@ use strum::{EnumMessage, VariantArray};
 #[strum(serialize_all = "kebab-case")]
 pub enum Conv {
     #[default]
-    /// base64
-    #[strum(message = "Base64          ▸")]
+    /// modules
+    #[strum(message = "Base64  ▸")]
     Base64,
     /// binary
-    #[strum(message = "Binary          ▸")]
+    #[strum(message = "Binary  ▸")]
     Binary,
     /// escape
-    #[strum(message = "Escape          ▸")]
+    #[strum(message = "Escape  ▸")]
     Escape,
     /// Crypt
-    #[strum(message = "Crypt           ▸")]
+    #[strum(message = "Crypt   ▸")]
     Crypt,
+    /// Crypt
+    #[strum(message = "Regex   ▸")]
+    Regex,
+    /// Jq
+    #[strum(message = "Jq")]
+    Jq,
 }
 
 #[derive(Default, Copy, Clone, Debug, PartialEq, VariantArray, EnumMessage)]
 #[strum(serialize_all = "kebab-case")]
-pub enum Digest {
+pub enum RegexMenu {
+    #[default]
+    /// regex
+    #[strum(message = "Regex")]
+    Regex,
+    /// regex grep
+    #[strum(message = "Grep")]
+    Grep,
+}
+
+#[derive(Default, Copy, Clone, Debug, PartialEq, VariantArray, EnumMessage)]
+#[strum(serialize_all = "kebab-case")]
+pub enum DigestMenu {
     #[default]
     /// md5 digest
     #[strum(message = "MD5")]
@@ -40,11 +58,20 @@ pub enum Digest {
     /// sha512
     #[strum(message = "SHA-512")]
     Sha512,
+    /// aes128
+    #[strum(message = "AES-128")]
+    Aes128,
+    /// aes192
+    #[strum(message = "AES-192")]
+    Aes192,
+    /// aes256
+    #[strum(message = "AES-256")]
+    Aes256,
 }
 
 #[derive(Default, Copy, Clone, Debug, PartialEq, VariantArray, EnumMessage)]
 #[strum(serialize_all = "kebab-case")]
-pub enum Base64Kind {
+pub enum Base64Menu {
     #[default]
     /// to base 64 (rfc 4648)
     #[strum(message = "To Base64")]
@@ -65,7 +92,7 @@ pub enum Base64Kind {
 
 #[derive(Default, Copy, Clone, Debug, PartialEq, VariantArray, EnumMessage)]
 #[strum(serialize_all = "kebab-case")]
-pub enum BinaryKind {
+pub enum BinaryMenu {
     #[default]
     /// From UTF-8 to Hex
     /// ex: '𝕊☺a' = 'f09d958ae298ba61'
@@ -95,7 +122,25 @@ pub enum BinaryKind {
 
 #[derive(Default, Copy, Clone, Debug, PartialEq, VariantArray, EnumMessage)]
 #[strum(serialize_all = "kebab-case")]
-pub enum EscapeKind {
+pub enum BinaryConversionMenu {
+    #[default]
+    /// Binary
+    #[strum(message = "Binary")]
+    Binary,
+    /// Decimal
+    #[strum(message = "Decimal")]
+    Decimal,
+    /// Octal
+    #[strum(message = "Octal")]
+    Octal,
+    /// Hexadecimal
+    #[strum(message = "Hexadecimal")]
+    Hexadecimal,
+}
+
+#[derive(Default, Copy, Clone, Debug, PartialEq, VariantArray, EnumMessage)]
+#[strum(serialize_all = "kebab-case")]
+pub enum EscapeMenu {
     #[default]
     /// url encode
     /// ex: '𝕊☺a' = '%F0%9D%95%8A%E2%98%BAa'
