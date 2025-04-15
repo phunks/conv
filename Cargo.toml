@@ -52,3 +52,4 @@ log = "0.4.22"
 codesnake = "0.2.1"
 hifijson = "0.2.2"
 unicode-width = "0.2"
+monkey-json = { path = "external/monkey-json" }

@@ -20,8 +20,9 @@ pub struct Editor {
     cache: crate::conv::LayoutCache,
 }
 
-#[derive(Default)]
+#[derive(better_default::Default)]
 pub struct JqStore {
+    #[default(r".[]".to_string())]
     /// filter
     pub filter: String,
 }

@@ -8,7 +8,7 @@ use crate::conv::Editor;
 use eframe::egui;
 use eframe::egui::{Color32, RichText};
 use egui::{Align, Layout, TextStyle, Ui, vec2};
-use crate::conv::modules::jaq::jq;
+use crate::conv::modules::jq::jaq::jq;
 
 pub fn convert(ui: &mut Ui, editor: &mut Editor) {
     let initial_size = vec2(
