@@ -45,12 +45,16 @@ impl SliceExt for [u8] {
 const TR_SAFE_URL: [char; 4] = ['/', '+', '_', '-'];
 
 pub trait StringExt {
+    #[allow(unused)]
     fn validator_len(&self, n: i8, t: &str) -> Result<Self, String>
     where
         Self: Sized;
+    #[allow(unused)]
     fn char_bytestring(&self) -> Vec<u32>;
+    #[allow(unused)]
     fn parse_unicode(&self) -> Option<char>;
     fn tr_safe_url(&self) -> String;
+    #[allow(unused)]
     fn utf8_bytestring(&self) -> Vec<u8>;
     #[allow(unused)]
     fn utf16_bytestring(&self) -> Vec<u16>;
