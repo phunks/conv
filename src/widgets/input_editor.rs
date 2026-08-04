@@ -62,7 +62,7 @@ fn option_inputs_ui(ui: &mut Ui, state: &mut AppState) -> bool {
     match state.selected {
         SelectedTool::Crypt => crypt_inputs_ui(ui, state),
         SelectedTool::Regex => regex_inputs_ui(ui, state),
-        SelectedTool::Jq => jq_inputs_ui(ui, state),
+        SelectedTool::Data => jq_inputs_ui(ui, state),
         SelectedTool::Base64 | SelectedTool::Binary | SelectedTool::Escape => false,
     }
 }
@@ -122,11 +122,15 @@ fn regex_inputs_ui(ui: &mut Ui, state: &mut AppState) -> bool {
 }
 
 fn jq_inputs_ui(ui: &mut Ui, state: &mut AppState) -> bool {
+    if state.options.data.input_format != crate::converters::data::format::InputFormat::Json {
+        return false;
+    }
+
     inputbox(
         ui,
-        "input.jq.filter",
+        "input.data.filter",
         "jq filter",
-        &mut state.options.jq.filter,
+        &mut state.options.data.filter,
     )
 }
 

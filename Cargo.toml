@@ -41,7 +41,11 @@ aes-gcm = "0.11"
 #html_parser = "0.7"
 jaq-core = { version = "3.1" }
 jaq-std  = { version = "3.0" }
-jaq-json = { version = "2.0" }
+jaq-json = { version = "2.0" , features = ["serde"] }
+jaq-fmts = { version = "0.1" }
 codesnake = "=0.2.1"
 unicode-width = "0.2"
 bytes = "1.12.1"
+taplo = "0.14"
+serde_json = "1"
+rust-yaml = { version = "1.1", features = ["serde"] }

@@ -56,26 +56,41 @@ impl App {
             let changed = crate::widgets::menu::menu_ui(ui, &mut self.state);
 
             ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                let enabled = self
-                    .cache
-                    .outputs
-                    .current(self.state.selected)
-                    .result
-                    .has_non_empty_plain_text();
+                let selected = self.state.selected;
+                let enabled = match selected {
+                    crate::app::state::SelectedTool::Data => {
+                        !self.state.options.data.filter.is_empty()
+                    }
+                    _ => self
+                        .cache
+                        .outputs
+                        .current(selected)
+                        .result
+                        .has_non_empty_plain_text(),
+                };
 
                 if ui
                     .add_enabled(enabled, Button::new("← input"))
                     .on_hover_text("copy output to input")
-                    .clicked() && let Some(output) = self
-                        .cache
-                        .outputs
-                        .current(self.state.selected)
-                        .result
-                        .plain_text_owned()
-                    {
+                    .clicked()
+                {
+                    let output = match selected {
+                        crate::app::state::SelectedTool::Data => {
+                            self.converters.jq.copy_output_text(&self.state)
+                        }
+                        _ => self
+                            .cache
+                            .outputs
+                            .current(selected)
+                            .result
+                            .plain_text_owned(),
+                    };
+
+                    if let Some(output) = output {
                         self.state.input = output;
                         self.cache.outputs.mark_all_dirty();
                     }
+                }
             });
 
             changed
@@ -91,7 +106,7 @@ impl App {
                 ui.with_layout(
                     Layout::top_down(Align::LEFT).with_cross_justify(false),
                     |ui| {
-                        if self.state.selected == crate::app::state::SelectedTool::Jq {
+                        if self.state.selected == crate::app::state::SelectedTool::Data {
                             self.converters.jq.render(ui, &self.state);
                             return;
                         }

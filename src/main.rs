@@ -1,4 +1,6 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
+extern crate core;
+
 use eframe::egui::{Context, FontData, FontDefinitions, FontFamily};
 use eframe::egui;
 use eframe::egui::SizeHint::Size;

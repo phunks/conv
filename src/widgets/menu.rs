@@ -4,11 +4,12 @@ use crate::app::state::{AppState, SelectedTool};
 use crate::converters::base64::Base64Options;
 use crate::converters::binary::BinaryOptions;
 use crate::converters::escape::EscapeOptions;
-use crate::converters::jq::JqOptions;
-use crate::converters::regex::RegexOptions;
+use crate::converters::data::DataOptions;
+use crate::converters::regex::{self, RegexOptions};
 use crate::converters::crypt::{
     AesEncDec, AesMode, CryptOptions, CryptOutputFormat, DigestMenu,
 };
+use crate::converters::data::format::{InputFormat, OutputFormat};
 
 #[derive(Default, Copy, Clone, Debug, PartialEq, Eq, VariantArray, EnumMessage)]
 #[strum(serialize_all = "kebab-case")]
@@ -29,9 +30,9 @@ pub enum Conv {
     /// regex
     #[strum(message = "Regex   ▸")]
     Regex,
-    /// jq
-    #[strum(message = "Jq")]
-    Jq,
+    /// structured-data converter
+    #[strum(message = "DATA")]
+    DATA,
 }
 
 impl From<SelectedTool> for Conv {
@@ -42,7 +43,7 @@ impl From<SelectedTool> for Conv {
             SelectedTool::Escape => Self::Escape,
             SelectedTool::Crypt => Self::Crypt,
             SelectedTool::Regex => Self::Regex,
-            SelectedTool::Jq => Self::Jq,
+            SelectedTool::Data => Self::DATA,
         }
     }
 }
@@ -55,7 +56,7 @@ impl From<Conv> for SelectedTool {
             Conv::Escape => Self::Escape,
             Conv::Crypt => Self::Crypt,
             Conv::Regex => Self::Regex,
-            Conv::Jq => Self::Jq,
+            Conv::DATA => Self::Data,
         }
     }
 }
@@ -176,8 +177,8 @@ pub fn menu_ui(ui: &mut Ui, state: &mut AppState) -> bool {
             SelectedTool::Binary => binary_menu_ui(ui, &mut state.options.binary),
             SelectedTool::Escape => escape_menu_ui(ui, &mut state.options.escape),
             SelectedTool::Crypt => crypt_menu_ui(ui, &mut state.options.crypt),
-            SelectedTool::Regex => regex_menu_ui(ui, &mut state.options.regex),
-            SelectedTool::Jq => jq_menu_ui(ui, &mut state.options.jq),
+            SelectedTool::Regex => regex_menu_ui(ui, state),
+            SelectedTool::Data => jq_menu_ui(ui, &mut state.options.data),
         };
 
         changed
@@ -272,28 +273,61 @@ fn crypt_output_format_ui(ui: &mut Ui, options: &mut CryptOptions) -> bool {
     changed
 }
 
-fn regex_menu_ui(ui: &mut Ui, options: &mut RegexOptions) -> bool {
+fn regex_menu_ui(ui: &mut Ui, state: &mut AppState) -> bool {
     let mut changed = false;
 
-    changed |= combobox(ui, "menu.regex.mode", &mut options.mode);
+    {
+        let options = &mut state.options.regex;
 
-    match options.mode {
-        RegexMenu::Regex => {
-            changed |= ui.checkbox(&mut options.single_line, "single line").changed();
-            changed |= ui.checkbox(&mut options.replace_enabled, "replace").changed();
-            changed |= ui.checkbox(&mut options.ignore_case, "ignore case").changed();
+        changed |= combobox(ui, "menu.regex.mode", &mut options.mode);
+
+        match options.mode {
+            RegexMenu::Regex => {
+                changed |= ui.checkbox(&mut options.single_line, "single line").changed();
+                changed |= ui.checkbox(&mut options.replace_enabled, "replace").changed();
+                changed |= ui.checkbox(&mut options.ignore_case, "ignore case").changed();
+            }
+            RegexMenu::Grep => {
+                changed |= ui.checkbox(&mut options.invert, "invert").changed();
+                changed |= ui.checkbox(&mut options.ignore_case, "ignore case").changed();
+                changed |= ui.checkbox(&mut options.sort, "sort").changed();
+                changed |= ui.checkbox(&mut options.uniq, "uniq").changed();
+                changed |= ui.checkbox(&mut options.unique, "unique").changed();
+            }
         }
-        RegexMenu::Grep => {
-            changed |= ui.checkbox(&mut options.invert, "invert").changed();
-            changed |= ui.checkbox(&mut options.ignore_case, "ignore case").changed();
-        }
+    }
+
+    if state.options.regex.mode == RegexMenu::Grep
+        && let Some(count) = regex::grep_result_count(&state.input, &state.options.regex)
+    {
+        ui.label(format!("{count} lines"))
+            .on_hover_text("number of resulting lines");
     }
 
     changed
 }
 
-fn jq_menu_ui(_ui: &mut Ui, _options: &mut JqOptions) -> bool {
-    false
+fn jq_menu_ui(ui: &mut Ui, options: &mut DataOptions) -> bool {
+    let mut changed = false;
+
+    ui.label("from:");
+    changed |= combobox(ui, "menu.data.input_format", &mut options.input_format);
+
+    ui.label("to:");
+    changed |= combobox(ui, "menu.data.output_format", &mut options.output_format);
+
+    if options.input_format == InputFormat::Csv {
+        changed |= ui.checkbox(&mut options.slurp, "slurp").changed();
+    }
+
+    if options.output_format == OutputFormat::Json {
+        changed |= ui
+            .checkbox(&mut options.compact, "compact")
+            .on_hover_text("compact JSON output (-c)")
+            .changed();
+    }
+
+    changed
 }
 
 fn combobox<T>(ui: &mut Ui, salt: &str, value: &mut T) -> bool

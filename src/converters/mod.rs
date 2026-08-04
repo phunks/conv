@@ -1,17 +1,18 @@
 use crate::app::result::ConvertResult;
 use crate::app::state::{AppState, SelectedTool};
+use crate::converters::data::DataFormatConverter;
 
 pub mod base64;
 pub mod binary;
 pub mod crypt;
 pub mod escape;
-pub mod jq;
+pub mod data;
 pub mod regex;
 
 #[derive(Default)]
 pub struct Converters {
     pub regex: regex::RegexConverter,
-    pub jq: jq::JqConverter,
+    pub jq: DataFormatConverter,
 }
 
 pub trait Converter {
@@ -26,7 +27,7 @@ impl Converters {
             SelectedTool::Escape => escape::convert(&state.input, &state.options.escape),
             SelectedTool::Crypt => crypt::convert(&state.input, &state.options.crypt),
             SelectedTool::Regex => self.regex.convert(state),
-            SelectedTool::Jq => self.jq.convert(state),
+            SelectedTool::Data => self.jq.convert(state),
         }
     }
 }

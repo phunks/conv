@@ -1,3 +1,4 @@
+use std::collections::HashSet;
 use crate::app::result::ConvertResult;
 use crate::app::state::AppState;
 use crate::converters::Converter;
@@ -22,6 +23,12 @@ pub struct RegexOptions {
     pub ignore_case: bool,
     /// invert (grep)
     pub invert: bool,
+    /// sort grep results
+    pub sort: bool,
+    /// remove adjacent duplicate grep results
+    pub uniq: bool,
+    /// remove all duplicate grep results while preserving input order
+    pub unique: bool,
 }
 
 #[derive(Default)]
@@ -92,23 +99,55 @@ fn regex_replace_result(regex: &Regex, state: &AppState, options: &RegexOptions)
 
 fn grep_result(regex: &Regex, state: &AppState, options: &RegexOptions) -> ConvertResult {
     let mut job = LayoutJob::default();
-    let mut lines = state.input.split('\n').peekable();
+    let lines = grep_lines(regex, &state.input, options);
 
-    while let Some(line) = lines.next() {
-        let has_match = regex.is_match(line).unwrap_or(false);
-
-        let show = if options.invert { !has_match } else { has_match };
-
-        if show {
-            highlight_line(&mut job, regex, line, options);
-
-            if lines.peek().is_some() {
-                append_plain(&mut job, "\n");
-            }
+    for (index, line) in lines.into_iter().enumerate() {
+        if index > 0 {
+            append_plain(&mut job, "\n");
         }
+
+        highlight_line(&mut job, regex, line, options);
     }
 
     ConvertResult::RichText(job)
+}
+
+pub fn grep_result_count(input: &str, options: &RegexOptions) -> Option<usize> {
+    if options.pattern.is_empty() {
+        return None;
+    }
+
+    let regex = build_regex(&options.pattern, options.ignore_case, false).ok()?;
+    Some(grep_lines(&regex, input, options).len())
+}
+
+fn grep_lines<'a>(regex: &Regex, input: &'a str, options: &RegexOptions) -> Vec<&'a str> {
+    let mut lines = input
+        .split('\n')
+        .filter(|line| {
+            let has_match = regex.is_match(line).unwrap_or(false);
+            if options.invert {
+                !has_match
+            } else {
+                has_match
+            }
+        })
+        .collect::<Vec<_>>();
+
+    if options.sort {
+        lines.sort_unstable();
+    }
+
+    if options.uniq {
+        lines.dedup();
+    }
+
+    if options.unique {
+        let mut seen = HashSet::new();
+        lines.retain(|line| seen.insert(*line));
+    }
+
+    lines
 }
 
 /// Split one line by regex matches and append to the job.
@@ -131,14 +170,15 @@ fn highlight_line(job: &mut LayoutJob, regex: &Regex, hay: &str, options: &Regex
         .filter_map(Result::ok)
         .collect::<Vec<_>>();
 
-    let match_strings: Vec<String> = if options.replace_enabled {
-        matches
-            .iter()
-            .map(|m| regex.replace(m.as_str(), options.replace.as_str()).into_owned())
-            .collect()
-    } else {
-        matches.iter().map(|m| m.as_str().to_string()).collect()
-    };
+    let match_strings: Vec<String> =
+        if options.replace_enabled && options.mode == RegexMenu::Regex {
+            matches
+                .iter()
+                .map(|m| regex.replace(m.as_str(), options.replace.as_str()).into_owned())
+                .collect()
+        } else {
+            matches.iter().map(|m| m.as_str().to_string()).collect()
+        };
 
     let mut match_strings = match_strings;
     match_strings.push(String::new());
