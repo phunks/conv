@@ -1,5 +1,5 @@
 
-use eframe::egui::{Align, Button, CentralPanel, Context, Layout, ScrollArea, Ui};
+use eframe::egui::{Align, Button, CentralPanel, Context, Layout, ScrollArea, Ui, Visuals};
 use crate::app::cache::AppCache;
 use crate::app::state::AppState;
 use crate::converters::Converters;
@@ -13,7 +13,7 @@ pub struct App {
 
 impl eframe::App for App {
     fn update(&mut self, ctx: &Context, _frame: &mut eframe::Frame) {
-
+        ctx.set_visuals(Visuals::dark());
         CentralPanel::default().show(ctx, |ui| {
             self.app_ui(ui);
         });
