@@ -118,7 +118,6 @@ fn hex_decode(input: &str) -> Result<String, String> {
         return Err(format!("invalid hex character: {character}"));
     }
 
-    #[allow(clippy::chunks_exact_to_as_chunks)]
     let bytes = input
         .as_bytes()
         .chunks_exact(2)

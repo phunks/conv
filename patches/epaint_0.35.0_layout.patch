@@ -1,0 +1,22 @@
+diff --git a/crates/epaint/src/text/text_layout.rs b/crates/epaint/src/text/text_layout.rs
+index 34ef601..c392fc4 100644
+--- a/crates/epaint/src/text/text_layout.rs
++++ b/crates/epaint/src/text/text_layout.rs
+@@ -869,11 +869,12 @@ fn halign_and_justify_row(
+         return;
+     }
+ 
+-    let num_leading_spaces = row
+-        .glyphs
+-        .iter()
+-        .take_while(|glyph| glyph.chr.is_whitespace())
+-        .count();
++    // let num_leading_spaces = row
++    //     .glyphs
++    //     .iter()
++    //     .take_while(|glyph| glyph.chr.is_whitespace())
++    //     .count();
++    let num_leading_spaces = 0;
+ 
+     let glyph_range = if num_leading_spaces == row.glyphs.len() {
+         // There is only whitespace

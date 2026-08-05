@@ -1,12 +1,12 @@
-use core::fmt;
-use std::fmt::{Display, Formatter};
+
+use std::fmt::Display;
 use bytes::Bytes;
 use eframe::egui::{Color32, FontFamily, FontId, TextFormat};
 use eframe::egui::text::LayoutJob;
 use jaq_core::compile;
 use jaq_core::load::{lex, File};
 use jaq_json::{read, Val};
-use crate::converters::data::{color_from_hex, fmt_seq, visible_indentation, FormatterFn, PpOpts, Settings};
+use crate::converters::data::{color_from_hex, visible_indentation, Settings};
 
 #[derive(Clone, Copy)]
 pub(crate) enum JqColor {
@@ -119,15 +119,9 @@ fn append_jq_sequence_newline(job: &mut LayoutJob, settings: &Settings) {
 }
 
 fn append_jq_indent(job: &mut LayoutJob, settings: &Settings, level: usize) {
-    const WORD_JOINER: &str = "\u{2060}";
-
     if settings.compact || level == 0 {
         return;
     }
-
-    // Prevent egui from removing or ignoring leading whitespace.
-    // place an invisible WORD_JOINER at the beginning.
-    append_jq_text(job, WORD_JOINER, JqColor::Plain);
 
     let indent = " ".repeat(settings.indent.saturating_mul(level));
     append_jq_text(job, &indent, JqColor::Plain);
@@ -187,80 +181,6 @@ pub(crate) fn json_string(bytes: &Bytes) -> String {
 
     output.push('"');
     output
-}
-
-fn fmt_val(f: &mut Formatter, opts: &PpOpts, level: usize, v: &Val) -> fmt::Result {
-    match v {
-        Val::Null => span(f, "null", "null"),
-        Val::Bool(b) => span(f, "boolean", b),
-        Val::Num(n) => span(f, "number", n),
-        Val::TStr(bytes) | Val::BStr(bytes) => span(
-            f,
-            "string",
-            FormatterFn(|f: &mut Formatter| write_bytes_as_json_string(f, bytes)),
-        ),
-        Val::Arr(a) if a.is_empty() => write!(f, "[]"),
-        Val::Arr(a) => {
-            write!(f, "[")?;
-            fmt_seq(f, opts, level, a.iter(), |f, value| {
-                fmt_val(f, opts, level + 1, value)
-            })?;
-            write!(f, "]")
-        }
-        Val::Obj(o) if o.is_empty() => write!(f, "{{}}"),
-        Val::Obj(o) => {
-            write!(f, "{{")?;
-            fmt_seq(f, opts, level, o.iter(), |f, (key, value)| {
-                span(f, "key", FormatterFn(|f: &mut Formatter| fmt_plain(f, key)))?;
-                write!(f, ":")?;
-
-                if !opts.compact {
-                    write!(f, " ")?;
-                }
-
-                fmt_val(f, opts, level + 1, value)
-            })?;
-            write!(f, "}}")
-        }
-    }
-}
-
-fn fmt_plain(f: &mut Formatter, v: &Val) -> fmt::Result {
-    match v {
-        Val::Null => write!(f, "null"),
-        Val::Bool(b) => write!(f, "{b}"),
-        Val::Num(n) => write!(f, "{n}"),
-        Val::TStr(bytes) | Val::BStr(bytes) => write_bytes_as_json_string(f, bytes),
-        // Since jaq-json 2.0 allows arbitrary values ​​for keys, it delegates rare cases to `Display`.
-        other => write!(f, "{other}"),
-    }
-}
-
-// -----------------------------------------------------------------------------
-// bytes helpers (for jaq-json 2.0 TStr/BStr)
-// -----------------------------------------------------------------------------
-
-fn write_bytes_as_json_string(f: &mut Formatter, bytes: &Bytes) -> fmt::Result {
-    let text = match std::str::from_utf8(bytes.as_ref()) {
-        Ok(text) => std::borrow::Cow::Borrowed(text),
-        Err(_) => String::from_utf8_lossy(bytes.as_ref()),
-    };
-
-    write!(f, "\"")?;
-
-    for ch in text.chars() {
-        match ch {
-            '"' => write!(f, "\\\"")?,
-            '\\' => write!(f, "\\\\")?,
-            '\n' => write!(f, "\\n")?,
-            '\r' => write!(f, "\\r")?,
-            '\t' => write!(f, "\\t")?,
-            c if (c as u32) < 0x20 => write!(f, "\\u{:04x}", c as u32)?,
-            c => write!(f, "{c}")?,
-        }
-    }
-
-    write!(f, "\"")
 }
 
 // -----------------------------------------------------------------------------
@@ -381,7 +301,6 @@ fn append_layout_text(job: &mut LayoutJob, text: &str, color: Color32) {
 
 fn append_diagnostic_html_layout(job: &mut LayoutJob, html: &str) {
     let mut at_line_start = true;
-    let mut inserted_guard = false;
     let mut current_class: Option<String> = None;
     let mut class_stack: Vec<Option<String>> = Vec::new();
     let mut text = String::new();
@@ -419,7 +338,6 @@ fn append_diagnostic_html_layout(job: &mut LayoutJob, html: &str) {
                 &text,
                 current_class.as_deref(),
                 &mut at_line_start,
-                &mut inserted_guard,
             );
             text.clear();
 
@@ -433,7 +351,6 @@ fn append_diagnostic_html_layout(job: &mut LayoutJob, html: &str) {
                 &text,
                 current_class.as_deref(),
                 &mut at_line_start,
-                &mut inserted_guard,
             );
             text.clear();
 
@@ -452,7 +369,6 @@ fn append_diagnostic_html_layout(job: &mut LayoutJob, html: &str) {
         &text,
         current_class.as_deref(),
         &mut at_line_start,
-        &mut inserted_guard,
     );
 }
 
@@ -478,13 +394,12 @@ fn append_diagnostic_fragment(
     text: &str,
     class: Option<&str>,
     at_line_start: &mut bool,
-    inserted_guard: &mut bool,
 ) {
     if text.is_empty() {
         return;
     }
 
-    let text = visible_indentation_fragment(text, 4, at_line_start, inserted_guard);
+    let text = visible_indentation_fragment(text, 4, at_line_start);
     append_layout_text(job, &text, color_from_str(class));
 }
 
@@ -492,10 +407,7 @@ fn visible_indentation_fragment(
     text: &str,
     tab_width: usize,
     at_line_start: &mut bool,
-    inserted_guard: &mut bool,
 ) -> String {
-    const WORD_JOINER: char = '\u{2060}';
-
     let mut rendered = String::with_capacity(text.len());
 
     for character in text.chars() {
@@ -503,23 +415,9 @@ fn visible_indentation_fragment(
             '\n' => {
                 rendered.push('\n');
                 *at_line_start = true;
-                *inserted_guard = false;
             }
             '\t' if *at_line_start => {
-                if !*inserted_guard {
-                    rendered.push(WORD_JOINER);
-                    *inserted_guard = true;
-                }
-
                 rendered.extend(std::iter::repeat_n(' ', tab_width));
-            }
-            ' ' if *at_line_start => {
-                if !*inserted_guard {
-                    rendered.push(WORD_JOINER);
-                    *inserted_guard = true;
-                }
-
-                rendered.push(' ');
             }
             character => {
                 rendered.push(character);
@@ -572,11 +470,6 @@ fn report_lex(code: &str, (expected, found): lex::Error<&str>) -> Report {
         labels,
     }
 }
-
-fn span(f: &mut Formatter, class: &str, value: impl Display) -> fmt::Result {
-    write!(f, "<span class=\"{class}\">{value}</span>")
-}
-
 
 fn report_parse(code: &str, (expected, found): jaq_core::load::parse::Error<&str>) -> Report {
     let found_text = if found.is_empty() {

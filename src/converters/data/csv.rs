@@ -13,30 +13,64 @@ pub struct CsvOutput {
 
 impl CsvOutput {
     pub fn write(&mut self, value: &Val) -> Result<String, String> {
-        let Val::Obj(fields) = value else {
-            return Err(format!("CSV output expects an object row, found: {value}"));
-        };
+        match value {
+            Val::Arr(rows) => {
+                let mut output = String::new();
 
-        let header = fields.iter().map(|(key, _)| key.clone()).collect::<Vec<_>>();
+                for (index, row) in rows.iter().enumerate() {
+                    let text = self
+                        .write(row)
+                        .map_err(|error| format!("CSV row {}: {error}", index + 1))?;
+                    output.push_str(&text);
+                }
 
-        if let Some(expected) = &self.header {
-            if expected != &header {
-                return Err("CSV output rows have different columns".to_owned());
+                Ok(output)
             }
-        } else {
-            self.header = Some(header.clone());
+            Val::Obj(fields) => {
+                let header = match &self.header {
+                    Some(header) => {
+                        if fields.len() != header.len()
+                            || header.iter().any(|key| {
+                            !fields.iter().any(|(candidate, _)| candidate == key)
+                        })
+                        {
+                            return Err("CSV output rows have different columns".to_owned());
+                        }
+
+                        header.clone()
+                    }
+                    None => {
+                        let header = fields
+                            .iter()
+                            .map(|(key, _)| key.clone())
+                            .collect::<Vec<_>>();
+                        self.header = Some(header.clone());
+                        header
+                    }
+                };
+
+                let row = header
+                    .iter()
+                    .map(|key| {
+                        fields
+                            .iter()
+                            .find_map(|(candidate, value)| (candidate == key).then(|| value.clone()))
+                            .expect("validated CSV header key must be present in every row")
+                    })
+                    .collect::<Vec<_>>();
+
+                let mut output = String::new();
+
+                if !self.header_written {
+                    output.push_str(&csv_row(&header)?);
+                    self.header_written = true;
+                }
+
+                output.push_str(&csv_row(&row)?);
+                Ok(output)
+            }
+            value => Err(format!("CSV output expects an object row or an array of rows, found: {value}")),
         }
-
-        let row = fields.iter().map(|(_, value)| value.clone()).collect::<Vec<_>>();
-        let mut output = String::new();
-
-        if !self.header_written {
-            output.push_str(&csv_row(&header)?);
-            self.header_written = true;
-        }
-
-        output.push_str(&csv_row(&row)?);
-        Ok(output)
     }
 }
 

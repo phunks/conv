@@ -72,7 +72,6 @@ where
     for<'a> &'a mut [u8]: TryInto<&'a mut Block<Aes>>,
 {
     let mut previous = *iv;
-    #[allow(clippy::chunks_exact_to_as_chunks)]
     for chunk in bytes.chunks_exact_mut(AES_BLOCK_LEN) {
         for index in 0..AES_BLOCK_LEN {
             chunk[index] ^= previous[index];
@@ -94,7 +93,6 @@ where
     let mut previous = *iv;
 
     let mut ciphertext_block = Block::<Aes>::default();
-    #[allow(clippy::chunks_exact_to_as_chunks)]
     for chunk in bytes.chunks_exact_mut(AES_BLOCK_LEN) {
         ciphertext_block.copy_from_slice(chunk);
 

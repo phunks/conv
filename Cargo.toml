@@ -1,6 +1,6 @@
 [package]
 name = "conv"
-version = "0.3.0"
+version = "0.3.1"
 edition = "2024"
 license = "MIT"
 description = "converter tool"
@@ -19,9 +19,8 @@ repository = "https://github.com/phunks/conv"
 
 [dependencies]
 env_logger = "0.11"
-## see #7379, #1272
-eframe = "0.31"
-egui_extras = { version = "0.31", features = ["all_loaders"] }
+eframe = { version = "0.31.1" }
+egui_extras = { version = "0.31.1", features = ["all_loaders"] }
 strum = { version = "0.28", features = ["derive"] }
 regex = { version = "1.13" }
 fancy-regex = { version = "0.19.0" }
@@ -38,7 +37,6 @@ sha1 = "0.11"
 base16ct = { version = "1.0", features = ["alloc"] }
 aead = { version = "0.6", default-features = false }
 aes-gcm = "0.11"
-#html_parser = "0.7"
 jaq-core = { version = "3.1" }
 jaq-std  = { version = "3.0" }
 jaq-json = { version = "2.0" , features = ["serde"] }
@@ -48,4 +46,13 @@ unicode-width = "0.2"
 bytes = "1.12.1"
 taplo = "0.14"
 serde_json = "1"
-rust-yaml = { version = "1.1", features = ["serde"] }
+serde-saphyr = "1.0"
+
+[target.'cfg(windows)'.build-dependencies]
+winres = "0.1"
+
+[patch.crates-io]
+## see #7379, #1272
+eframe = { path = "ext/egui/crates/eframe" }
+epaint = { path = "ext/egui/crates/epaint" }
+egui_extras = { path = "ext/egui/crates/egui_extras" }

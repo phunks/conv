@@ -1,0 +1,38 @@
+diff --git a/crates/epaint/src/text/text_layout.rs b/crates/epaint/src/text/text_layout.rs
+index 4eb5965..4510f5d 100644
+--- a/crates/epaint/src/text/text_layout.rs
++++ b/crates/epaint/src/text/text_layout.rs
+@@ -515,19 +515,20 @@ fn halign_and_justify_row(
+         .take_while(|glyph| glyph.chr.is_whitespace())
+         .count();
+ 
+-    let glyph_range = if num_leading_spaces == row.glyphs.len() {
+-        // There is only whitespace
+-        (0, row.glyphs.len())
+-    } else {
+-        let num_trailing_spaces = row
+-            .glyphs
+-            .iter()
+-            .rev()
+-            .take_while(|glyph| glyph.chr.is_whitespace())
+-            .count();
+-
+-        (num_leading_spaces, row.glyphs.len() - num_trailing_spaces)
+-    };
++    // let glyph_range = if num_leading_spaces == row.glyphs.len() {
++    //     // There is only whitespace
++    //     (0, row.glyphs.len())
++    // } else {
++    //     let num_trailing_spaces = row
++    //         .glyphs
++    //         .iter()
++    //         .rev()
++    //         .take_while(|glyph| glyph.chr.is_whitespace())
++    //         .count();
++    //
++    //     (num_leading_spaces, row.glyphs.len() - num_trailing_spaces)
++    // };
++    let glyph_range = (0, row.glyphs.len());
+     let num_glyphs_in_range = glyph_range.1 - glyph_range.0;
+     assert!(num_glyphs_in_range > 0);
+ 

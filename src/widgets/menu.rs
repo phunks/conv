@@ -5,34 +5,67 @@ use crate::converters::base64::Base64Options;
 use crate::converters::binary::BinaryOptions;
 use crate::converters::escape::EscapeOptions;
 use crate::converters::data::DataOptions;
-use crate::converters::regex::{self, RegexOptions};
+use crate::converters::regex;
 use crate::converters::crypt::{
     AesEncDec, AesMode, CryptOptions, CryptOutputFormat, DigestMenu,
 };
-use crate::converters::data::format::{InputFormat, OutputFormat};
 
 #[derive(Default, Copy, Clone, Debug, PartialEq, Eq, VariantArray, EnumMessage)]
 #[strum(serialize_all = "kebab-case")]
 pub enum Conv {
     #[default]
     /// modules
-    #[strum(message = "Base64  ▸")]
+    #[strum(message = "Base64")]
     Base64,
     /// binary
-    #[strum(message = "Binary  ▸")]
+    #[strum(message = "Binary")]
     Binary,
     /// escape
-    #[strum(message = "Escape  ▸")]
+    #[strum(message = "Escape")]
     Escape,
     /// crypt
-    #[strum(message = "Crypt   ▸")]
+    #[strum(message = "Crypt")]
     Crypt,
     /// regex
-    #[strum(message = "Regex   ▸")]
+    #[strum(message = "Regex")]
     Regex,
     /// structured-data converter
-    #[strum(message = "DATA")]
-    DATA,
+    #[strum(message = "Data")]
+    Data,
+}
+
+#[derive(Default, Copy, Clone, Debug, PartialEq, Eq, VariantArray, EnumMessage)]
+pub enum InputFormat {
+    #[default]
+    /// input Json
+    #[strum(message = "JSON")]
+    Json,
+    /// input Toml
+    #[strum(message = "TOML")]
+    Toml,
+    /// input Yaml
+    #[strum(message = "YAML")]
+    Yaml,
+    /// input Csv
+    #[strum(message = "CSV")]
+    Csv,
+}
+
+#[derive(Default, Copy, Clone, Debug, PartialEq, Eq, VariantArray, EnumMessage)]
+pub enum OutputFormat {
+    #[default]
+    /// output Json
+    #[strum(message = "JSON")]
+    Json,
+    /// output Toml
+    #[strum(message = "TOML")]
+    Toml,
+    /// output Yaml
+    #[strum(message = "YAML")]
+    Yaml,
+    /// output Csv
+    #[strum(message = "CSV")]
+    Csv,
 }
 
 impl From<SelectedTool> for Conv {
@@ -43,7 +76,7 @@ impl From<SelectedTool> for Conv {
             SelectedTool::Escape => Self::Escape,
             SelectedTool::Crypt => Self::Crypt,
             SelectedTool::Regex => Self::Regex,
-            SelectedTool::Data => Self::DATA,
+            SelectedTool::Data => Self::Data,
         }
     }
 }
@@ -56,7 +89,7 @@ impl From<Conv> for SelectedTool {
             Conv::Escape => Self::Escape,
             Conv::Crypt => Self::Crypt,
             Conv::Regex => Self::Regex,
-            Conv::DATA => Self::Data,
+            Conv::Data => Self::Data,
         }
     }
 }
@@ -316,8 +349,11 @@ fn jq_menu_ui(ui: &mut Ui, options: &mut DataOptions) -> bool {
     ui.label("to:");
     changed |= combobox(ui, "menu.data.output_format", &mut options.output_format);
 
-    if options.input_format == InputFormat::Csv {
-        changed |= ui.checkbox(&mut options.slurp, "slurp").changed();
+    if matches!(options.input_format, InputFormat::Json | InputFormat::Csv) {
+        changed |= ui
+            .checkbox(&mut options.slurp, "slurp")
+            .on_hover_text("combine all input values into a single array")
+            .changed();
     }
 
     if options.output_format == OutputFormat::Json {

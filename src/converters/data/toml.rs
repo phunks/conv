@@ -1,6 +1,7 @@
 use eframe::egui::text::LayoutJob;
 use eframe::egui::{Color32, FontFamily, FontId, TextFormat};
 
+#[allow(dead_code)]
 fn append_toml_text(job: &mut LayoutJob, text: &str) {
     if text.is_empty() {
         return;

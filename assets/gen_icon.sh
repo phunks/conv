@@ -6,7 +6,7 @@ output=$2
 inkscape="/Applications/Inkscape.app/Contents/MacOS/inkscape"
 outdir=${output}.iconset
 mkdir $outdir
-for sz in 16 32 128 256 512
+for sz in 16 32 48 128 256 512
 do
   echo "[+] Generate ${sz}x${sz} png..."
   $inkscape --export-filename=${outdir}/icon_${sz}x${sz}.png -w $sz -h $sz $insvg

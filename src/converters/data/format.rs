@@ -1,77 +1,9 @@
-use fancy_regex::Input;
 use jaq_fmts::write::{self, Writer};
 use jaq_fmts::Format;
 use jaq_json::write::Pp;
 use jaq_json::Val;
-use strum::{EnumMessage, VariantArray};
 use taplo::dom::node::DomNode;
 use taplo::parser::parse;
-
-// #[derive(Default, Copy, Clone, Debug, PartialEq, Eq, VariantArray, EnumMessage)]
-// pub enum JqInputFormat {
-//     #[default]
-//     #[strum(message = "Auto")]
-//     Auto,
-//     #[strum(message = "JSON")]
-//     Json,
-//     #[strum(message = "YAML")]
-//     Yaml,
-//     #[strum(message = "TOML")]
-//     Toml,
-//     #[strum(message = "XML")]
-//     Xml,
-//     #[strum(message = "CSV")]
-//     Csv,
-//     #[strum(message = "TSV")]
-//     Tsv,
-//     #[strum(message = "CBOR Base64")]
-//     CborBase64,
-// }
-//
-// #[derive(Default, Copy, Clone, Debug, PartialEq, Eq, VariantArray, EnumMessage)]
-// pub enum JqOutputFormat {
-//     #[default]
-//     #[strum(message = "JSON")]
-//     Json,
-//     #[strum(message = "YAML")]
-//     Yaml,
-//     #[strum(message = "TOML")]
-//     Toml,
-//     #[strum(message = "XML")]
-//     Xml,
-//     #[strum(message = "CSV")]
-//     Csv,
-//     #[strum(message = "TSV")]
-//     Tsv,
-//     #[strum(message = "CBOR Base64")]
-//     CborBase64,
-// }
-
-#[derive(Default, Copy, Clone, Debug, PartialEq, Eq, VariantArray, EnumMessage)]
-pub enum InputFormat {
-    #[default]
-    #[strum(message = "JSON")]
-    Json,
-    #[strum(message = "TOML")]
-    Toml,
-    #[strum(message = "YAML")]
-    Yaml,
-    #[strum(message = "CSV")]
-    Csv,
-}
-
-#[derive(Default, Copy, Clone, Debug, PartialEq, Eq, VariantArray, EnumMessage)]
-pub enum OutputFormat {
-    #[default]
-    #[strum(message = "JSON")]
-    Json,
-    #[strum(message = "TOML")]
-    Toml,
-    #[strum(message = "YAML")]
-    Yaml,
-    #[strum(message = "CSV")]
-    Csv,
-}
 
 pub fn parse_toml(input: &str) -> Result<Val, String> {
     let parsed = parse(input);
@@ -106,14 +38,30 @@ pub fn parse_toml(input: &str) -> Result<Val, String> {
     serde_json::from_value(json_value).map_err(|error| error.to_string())
 }
 
-pub fn parse_yaml(input: &str) -> Result<Val, String> {
-    let json_value: serde_json::Value =
-        rust_yaml::from_str(input).map_err(|error| error.to_string())?;
+fn is_json_value_stream(input: &str) -> bool {
+    let mut value_count = 0;
 
-    serde_json::from_value(json_value).map_err(|error| error.to_string())
+    for value in serde_json::Deserializer::from_str(input).into_iter::<serde_json::Value>() {
+        if value.is_err() {
+            return false;
+        }
+
+        value_count += 1;
+    }
+
+    value_count > 0
 }
 
+pub fn parse_yaml(input: &str) -> Result<Val, String> {
+    if is_json_value_stream(input) {
+        return Err(
+            "JSON or JSON Lines input is not accepted when the input format is YAML; select JSON instead."
+                .to_owned(),
+        );
+    }
 
+    serde_saphyr::from_str::<Val>(input).map_err(|error| error.to_string())
+}
 
 pub fn toml(value: &Val) -> Result<String, String> {
     let writer = Writer {
@@ -146,15 +94,3 @@ pub fn yaml(value: &Val) -> Result<String, String> {
     String::from_utf8(output).map_err(|error| error.to_string())
 }
 
-pub fn csv(value: &Val) -> Result<String, String> {
-    let writer = Writer {
-        format: Format::Csv,
-        pp: Pp::default(),
-        join: false,
-    };
-    let mut output = Vec::new();
-
-    write::write(&mut output, &writer, value).map_err(|error| error.to_string())?;
-
-    String::from_utf8(output).map_err(|error| error.to_string())
-}

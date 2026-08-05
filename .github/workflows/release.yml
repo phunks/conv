@@ -1,0 +1,146 @@
+name: Release
+permissions:
+  contents: write
+
+on:
+  workflow_dispatch:
+    tags:
+      - v*
+  push:
+    tags:
+      - v*
+
+jobs:
+  build:
+    runs-on: ${{ matrix.job.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        job:
+          - { os: ubuntu-latest  , target: x86_64-unknown-linux-gnu        , extension: ""   }
+          - { os: ubuntu-latest  , target: x86_64-unknown-linux-musl       , extension: ""   }
+          - { os: ubuntu-latest  , target: armv7-unknown-linux-musleabihf  , extension: ""   }
+          - { os: ubuntu-latest  , target: aarch64-unknown-linux-gnu       , extension: ""   }
+          - { os: ubuntu-latest  , target: aarch64-unknown-linux-musl      , extension: ""   }
+          - { os: macos-15-intel , target: x86_64-apple-darwin             , extension: ""   }
+          - { os: macos-latest   , target: aarch64-apple-darwin            , extension: ""   }
+          - { os: windows-latest , target: x86_64-pc-windows-msvc          , extension: .exe }
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Extract crate information
+        shell: bash
+        run: |
+          echo "PROJECT_NAME=$(sed -n 's/^name = "\(.*\)"/\1/p' Cargo.toml | head -n1)" >> $GITHUB_ENV
+
+      - run: rustup override unset
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.job.target }}
+
+      - name: Setup Zig
+        uses: goto-bus-stop/setup-zig@v2
+
+      - name: Install cargo-zigbuild
+        uses: taiki-e/install-action@cargo-zigbuild
+
+      - name: Install just
+        uses: taiki-e/install-action@just
+      - name: Configure git
+        shell: bash
+        run: |
+          git config --global core.autocrlf false
+
+      - name: Setup patched vendored dependencies
+        shell: bash
+        run: |
+          just setup-ext
+
+      - name: Build
+        shell: bash
+        env:
+          RUSTFLAGS: -C strip=symbols
+        run: |
+          if [ "${{ runner.os }}" = "Linux" ]; then
+            cargo zigbuild --release --target "${{ matrix.job.target }}"
+          else
+            cargo build --release --target "${{ matrix.job.target }}"
+          fi
+
+      - name: Rename artifacts
+        if: runner.os != 'macOS'
+        shell: bash
+        run: |
+          mv target/${{ matrix.job.target }}/release/${{ env.PROJECT_NAME }}{,-${{ github.ref_name }}-${{ matrix.job.target }}${{ matrix.job.extension }}}
+
+      - name: Package macOS application
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          release_name="${PROJECT_NAME}-${GITHUB_REF_NAME}-${{ matrix.job.target }}"
+          bundle_dir="target/${{ matrix.job.target }}/release/${PROJECT_NAME}.app"
+          
+          cp -R assets/osx/conv.app "$bundle_dir"
+          mkdir -p "$bundle_dir/Contents/MacOS"
+          cp "target/${{ matrix.job.target }}/release/${PROJECT_NAME}" \
+             "$bundle_dir/Contents/MacOS/${PROJECT_NAME}"
+          chmod +x "$bundle_dir/Contents/MacOS/${PROJECT_NAME}"
+          
+          ditto -c -k --sequesterRsrc --keepParent \
+            "$bundle_dir" \
+            "target/${{ matrix.job.target }}/release/${release_name}.zip"
+
+      - name: Package Windows release
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $releaseName = "${{ env.PROJECT_NAME }}-${{ github.ref_name }}-${{ matrix.job.target }}"
+          $releaseDirectory = "target/${{ matrix.job.target }}/release"
+          
+          Compress-Archive `
+          -Path "$releaseDirectory/$releaseName.exe", "README.md", "LICENSE" `
+          -DestinationPath "$releaseDirectory/$releaseName.zip"
+
+      - name: Upload Linux release file
+        if: runner.os == 'Linux'
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-${{ matrix.job.target }}
+          path: target/${{ matrix.job.target }}/release/${{ env.PROJECT_NAME }}-${{ github.ref_name }}-${{ matrix.job.target }}
+          if-no-files-found: error
+
+      - name: Upload macOS release archive
+        if: runner.os == 'macOS'
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-${{ matrix.job.target }}
+          path: target/${{ matrix.job.target }}/release/${{ env.PROJECT_NAME }}-${{ github.ref_name }}-${{ matrix.job.target }}.zip
+          if-no-files-found: error
+
+      - name: Upload Windows release archive
+        if: runner.os == 'Windows'
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-${{ matrix.job.target }}
+          path: target/${{ matrix.job.target }}/release/${{ env.PROJECT_NAME }}-${{ github.ref_name }}-${{ matrix.job.target }}.zip
+          if-no-files-found: error
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download release files
+        uses: actions/download-artifact@v4
+        with:
+          pattern: release-*
+          path: release
+          merge-multiple: true
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          files: release/*

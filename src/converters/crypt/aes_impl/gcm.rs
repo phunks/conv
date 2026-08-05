@@ -146,7 +146,6 @@ fn decode_hex(input: &str) -> Result<Vec<u8>, String> {
         return Err(format!("invalid hex character: {character}"));
     }
 
-    #[allow(clippy::chunks_exact_to_as_chunks)]
     input
         .as_bytes()
         .chunks_exact(2)

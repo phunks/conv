@@ -3,7 +3,7 @@ use eframe::egui::{FontFamily, FontId, ScrollArea, Style, TextEdit, TextFormat, 
 use eframe::egui::text::LayoutJob;
 use crate::app::state::{AppState, SelectedTool};
 use crate::converters::crypt::{AesMode, DigestMenu};
-use crate::widgets::menu::RegexMenu;
+use crate::widgets::menu::{InputFormat, RegexMenu};
 
 #[derive(Default, Clone)]
 pub struct LayoutCache {
@@ -122,7 +122,7 @@ fn regex_inputs_ui(ui: &mut Ui, state: &mut AppState) -> bool {
 }
 
 fn jq_inputs_ui(ui: &mut Ui, state: &mut AppState) -> bool {
-    if state.options.data.input_format != crate::converters::data::format::InputFormat::Json {
+    if state.options.data.input_format != InputFormat::Json {
         return false;
     }
 

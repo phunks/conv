@@ -1,18 +1,18 @@
 use crate::app::result::ConvertResult;
 use crate::app::state::AppState;
 use crate::converters::Converter;
-use crate::converters::data::format::{InputFormat, OutputFormat};
-use core::fmt::{self, Debug, Display, Formatter};
+use core::fmt::{self, Debug, Formatter};
 use eframe::egui::{Color32, FontFamily, FontId, TextFormat, Ui};
 use eframe::egui::text::LayoutJob;
 use jaq_core::load::{Arena, File, Loader};
 use jaq_core::{compile, Ctx, Native, Vars};
-use jaq_json::{read, Val};
+use jaq_json::Val;
 use std::rc::Rc;
 use bytes::Bytes;
 use jaq_core::data::JustLut;
 use crate::converters::data::csv::CsvOutput;
 use crate::converters::data::json::{append_value, format_compile_errors, format_load_errors, json_key, json_slice, json_string};
+use crate::widgets::menu::{InputFormat, OutputFormat};
 
 pub(crate) mod format;
 pub(crate) mod csv;
@@ -516,32 +516,17 @@ fn color_from_hex(hex: &str) -> Color32 {
 }
 
 fn visible_indentation(text: &str, tab_width: usize) -> String {
-    const WORD_JOINER: char = '\u{2060}';
-
     let mut rendered = String::with_capacity(text.len());
     let mut at_line_start = true;
-    let mut inserted_guard = false;
 
     for character in text.chars() {
         match character {
             '\n' => {
                 rendered.push('\n');
                 at_line_start = true;
-                inserted_guard = false;
             }
             '\t' if at_line_start => {
-                if !inserted_guard {
-                    rendered.push(WORD_JOINER);
-                    inserted_guard = true;
-                }
                 rendered.extend(std::iter::repeat_n(' ', tab_width));
-            }
-            ' ' if at_line_start => {
-                if !inserted_guard {
-                    rendered.push(WORD_JOINER);
-                    inserted_guard = true;
-                }
-                rendered.push(' ');
             }
             character => {
                 rendered.push(character);
@@ -552,28 +537,3 @@ fn visible_indentation(text: &str, tab_width: usize) -> String {
 
     rendered
 }
-
-// -----------------------------------------------------------------------------
-// misc
-// -----------------------------------------------------------------------------
-
-struct FormatterFn<F>(F);
-
-impl<F> Display for FormatterFn<F>
-where
-    F: Fn(&mut Formatter) -> fmt::Result,
-{
-    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
-        self.0(f)
-    }
-}
-
-impl<F> Debug for FormatterFn<F>
-where
-    F: Fn(&mut Formatter) -> fmt::Result,
-{
-    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
-        self.0(f)
-    }
-}
-
