@@ -1,4 +1,4 @@
-use eframe::egui::{ComboBox, Ui};
+use eframe::egui::{ComboBox, TextEdit, Ui};
 use strum::{EnumMessage, VariantArray};
 use crate::app::state::{AppState, SelectedTool};
 use crate::converters::base64::Base64Options;
@@ -32,6 +32,9 @@ pub enum Conv {
     /// structured-data converter
     #[strum(message = "Data")]
     Data,
+    /// clipboard structural diff
+    #[strum(message = "Diff")]
+    Diff,
 }
 
 #[derive(Default, Copy, Clone, Debug, PartialEq, Eq, VariantArray, EnumMessage)]
@@ -77,6 +80,7 @@ impl From<SelectedTool> for Conv {
             SelectedTool::Crypt => Self::Crypt,
             SelectedTool::Regex => Self::Regex,
             SelectedTool::Data => Self::Data,
+            SelectedTool::Diff => Self::Diff,
         }
     }
 }
@@ -90,6 +94,7 @@ impl From<Conv> for SelectedTool {
             Conv::Crypt => Self::Crypt,
             Conv::Regex => Self::Regex,
             Conv::Data => Self::Data,
+            Conv::Diff => Self::Diff,
         }
     }
 }
@@ -212,6 +217,7 @@ pub fn menu_ui(ui: &mut Ui, state: &mut AppState) -> bool {
             SelectedTool::Crypt => crypt_menu_ui(ui, &mut state.options.crypt),
             SelectedTool::Regex => regex_menu_ui(ui, state),
             SelectedTool::Data => jq_menu_ui(ui, &mut state.options.data),
+            SelectedTool::Diff => diff_menu_ui(ui, state),
         };
 
         changed
@@ -385,6 +391,55 @@ where
         })
         .response
         .on_hover_text(value.get_documentation().unwrap_or_default());
+
+    changed
+}
+
+fn diff_menu_ui(ui: &mut Ui, state: &mut AppState) -> bool {
+    let options = &mut state.options.diff;
+    let mut changed = false;
+
+    ui.label("language:");
+    changed |= combobox(ui, "menu.diff.language", &mut options.language);
+
+    // changed |= ui
+    //     .selectable_value(&mut options.view, crate::app::state::DiffView::Edit, "Edit")
+    //     .changed();
+    //
+    // changed |= ui
+    //     .selectable_value(&mut options.view, crate::app::state::DiffView::Diff, "Diff")
+    //     .changed();
+
+    changed |= ui
+        .checkbox(&mut options.ignore_comments, "ignore comments")
+        .changed();
+
+    ui.separator();
+    //
+    // if ui.button("Copy left").clicked() {
+    //     ui.ctx().copy_text(options.left.clone());
+    // }
+    //
+    // if ui.button("Copy right").clicked() {
+    //     ui.ctx().copy_text(options.right.clone());
+    // }
+
+    if ui.button("Swap").clicked() {
+        std::mem::swap(&mut options.left, &mut options.right);
+        changed = true;
+    }
+
+    if ui
+        .add_enabled(
+            !options.left.is_empty() || !options.right.is_empty(),
+            eframe::egui::Button::new("Clear"),
+        )
+        .clicked()
+    {
+        options.left.clear();
+        options.right.clear();
+        changed = true;
+    }
 
     changed
 }

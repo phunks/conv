@@ -1,4 +1,5 @@
-
+use std::time::Duration;
+use std::time::Instant;
 use eframe::egui::{Align, Button, CentralPanel, Context, Layout, ScrollArea, Ui, Visuals};
 use crate::app::cache::AppCache;
 use crate::app::state::AppState;
@@ -22,6 +23,11 @@ impl eframe::App for App {
 
 impl App {
     fn app_ui(&mut self, ui: &mut Ui) {
+        if self.state.selected == crate::app::state::SelectedTool::Diff {
+            self.diff_ui(ui);
+            return;
+        }
+
         let selected_before_toolbar = self.state.selected;
         let toolbar_changed = self.toolbar_ui(ui);
 
@@ -131,6 +137,76 @@ impl App {
         output.result = self.converters.convert(&self.state);
         output.dirty = false;
         self.cache.output_layout.clear();
+    }
+
+    fn diff_ui(&mut self, ui: &mut Ui) {
+        const DIFF_DEBOUNCE: Duration = Duration::from_millis(200);
+
+        let toolbar_changed = crate::widgets::menu::menu_ui(ui, &mut self.state);
+
+        if toolbar_changed || self.cache.diff.result.is_none() {
+            self.cache.diff.update_deadline = None;
+            self.update_diff();
+        }
+
+        ui.separator();
+
+        let editor_changed = crate::widgets::diff_editor::diff_editor_ui(
+            ui,
+            &mut self.state.options.diff,
+            &self.cache.diff,
+        );
+
+        if editor_changed {
+            self.cache.diff.update_deadline = Some(Instant::now() + DIFF_DEBOUNCE);
+        }
+
+        if let Some(deadline) = self.cache.diff.update_deadline {
+            let now = Instant::now();
+
+            if now >= deadline {
+                self.cache.diff.update_deadline = None;
+                self.update_diff();
+            } else {
+                ui.ctx()
+                    .request_repaint_after(deadline.saturating_duration_since(now));
+            }
+        }
+    }
+
+    fn update_diff(&mut self) {
+        use crate::widgets::diff_editor::MAX_DIFF_INPUT_BYTES;
+
+        self.cache.diff.update_deadline = None;
+
+        let options = &self.state.options.diff;
+
+        if options.left.len() > MAX_DIFF_INPUT_BYTES {
+            self.cache.diff.error = Some("left input exceeds 1 MiB; diff was not updated".to_owned());
+            return;
+        }
+
+        if options.right.len() > MAX_DIFF_INPUT_BYTES {
+            self.cache.diff.error = Some("right input exceeds 1 MiB; diff was not updated".to_owned());
+            return;
+        }
+
+        if options.left.is_empty() && options.right.is_empty() {
+            self.cache.diff.result = None;
+            self.cache.diff.error = Some("paste text into either side to compare".to_owned());
+            return;
+        }
+
+        self.cache.diff.result = Some(difftastic::clipboard::diff_text(
+            options.language.virtual_path(),
+            &options.left,
+            &options.right,
+            difftastic::clipboard::ClipboardDiffOptions {
+                context_lines: options.context_lines,
+                ignore_comments: options.ignore_comments,
+            },
+        ));
+        self.cache.diff.error = None;
     }
 }
 

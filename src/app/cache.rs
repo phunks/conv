@@ -1,5 +1,9 @@
 use std::sync::Arc;
+use std::time::Instant;
+
+use difftastic::clipboard::ClipboardDiff;
 use eframe::egui::{text, Galley, Style, TextFormat, TextStyle, Ui};
+
 use crate::app::result::ConvertResult;
 use crate::app::state::SelectedTool;
 use crate::widgets::input_editor::LayoutCache;
@@ -9,6 +13,14 @@ pub struct AppCache {
     pub outputs: OutputCaches,
     pub input_layout: LayoutCache,
     pub output_layout: TextGalleyCache,
+    pub diff: DiffCache,
+}
+
+#[derive(Default)]
+pub struct DiffCache {
+    pub result: Option<ClipboardDiff>,
+    pub error: Option<String>,
+    pub update_deadline: Option<Instant>,
 }
 
 #[derive(Default)]

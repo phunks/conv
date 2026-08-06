@@ -7,4 +7,6 @@ fn main() {
         resources.set_icon("assets/windows/conv.ico");
         resources.compile().expect("failed to embed Windows resources");
     }
+
+    unsafe { std::env::set_var("CARGO_BIN_NAME", "difft"); }
 }

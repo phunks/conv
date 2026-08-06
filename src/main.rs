@@ -62,3 +62,23 @@ fn add_font(ctx: &Context) {
 
     ctx.set_fonts(fonts);
 }
+
+
+#[cfg(test)]
+mod tests {
+    use difftastic::clipboard::{diff_text, ClipboardDiffOptions};
+    use super::*;
+
+    #[test]
+    fn detects_a_text_change() {
+        let diff = diff_text(
+            "clipboard.xml",
+            "<version>0.3.0</version>\n",
+            "<version>0.3.1</version>\n",
+            ClipboardDiffOptions::default(),
+        );
+
+        assert!(diff.has_changes());
+        assert_eq!(diff.language(), "XML");
+    }
+}

@@ -28,6 +28,7 @@ impl Converters {
             SelectedTool::Crypt => crypt::convert(&state.input, &state.options.crypt),
             SelectedTool::Regex => self.regex.convert(state),
             SelectedTool::Data => self.jq.convert(state),
+            SelectedTool::Diff => ConvertResult::Empty,
         }
     }
 }

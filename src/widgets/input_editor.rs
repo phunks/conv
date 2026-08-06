@@ -63,7 +63,9 @@ fn option_inputs_ui(ui: &mut Ui, state: &mut AppState) -> bool {
         SelectedTool::Crypt => crypt_inputs_ui(ui, state),
         SelectedTool::Regex => regex_inputs_ui(ui, state),
         SelectedTool::Data => jq_inputs_ui(ui, state),
-        SelectedTool::Base64 | SelectedTool::Binary | SelectedTool::Escape => false,
+        SelectedTool::Base64 | SelectedTool::Binary | SelectedTool::Escape | SelectedTool::Diff => {
+            false
+        }
     }
 }
 

@@ -9,18 +9,19 @@ readme = "README.md"
 homepage = "https://github.com/phunks/conv"
 repository = "https://github.com/phunks/conv"
 
-#[profile.release]
-#debug = true
-#strip = "none"
-#lto = "thin"
-#codegen-units = 1
-#split-debuginfo = "unpacked"
+[profile.release]
+debug = true
+strip = "none"
+lto = "thin"
+codegen-units = 1
+split-debuginfo = "unpacked"
 
 
 [dependencies]
 env_logger = "0.11"
 eframe = { version = "0.31.1" }
 egui_extras = { version = "0.31.1", features = ["all_loaders"] }
+difftastic = { path = "ext/difftastic" }
 strum = { version = "0.28", features = ["derive"] }
 regex = { version = "1.13" }
 fancy-regex = { version = "0.19.0" }

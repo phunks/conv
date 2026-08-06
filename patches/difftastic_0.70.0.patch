@@ -1,0 +1,651 @@
+diff --git a/src/clipboard.rs b/src/clipboard.rs
+new file mode 100644
+index 000000000..e2ff7dc42
+--- /dev/null
++++ b/src/clipboard.rs
+@@ -0,0 +1,615 @@
++use std::env;
++use std::ops::Range;
++use std::path::Path;
++
++use humansize::{format_size, FormatSizeOptions, BINARY};
++use typed_arena::Arena;
++
++use crate::constants::Side;
++use crate::diff::changes::ChangeMap;
++use crate::diff::shortest_path::ExceededGraphLimit;
++use crate::diff::{shortest_path, unchanged};
++use crate::diff::sliders::fix_all_sliders;
++use crate::display::context::{all_matched_lines_filled, opposite_positions};
++use crate::display::hunks::{matched_pos_to_hunks, merge_adjacent};
++use crate::display::side_by_side::lines_with_novel;
++use crate::line_parser;
++use crate::lines::MaxLine;
++use crate::options::{DiffOptions, DisplayOptions};
++use crate::parse::guess_language::{guess, language_name};
++use crate::parse::syntax::{self, init_next_prev, MatchedPos};
++use crate::parse::tree_sitter_parser as tsp;
++use crate::summary::{DiffResult, FileContent, FileFormat};
++
++#[derive(Debug, Clone, Copy)]
++pub struct ClipboardDiffOptions {
++    pub context_lines: usize,
++    pub ignore_comments: bool,
++}
++
++impl Default for ClipboardDiffOptions {
++    fn default() -> Self {
++        Self {
++            context_lines: 3,
++            ignore_comments: false,
++        }
++    }
++}
++
++#[derive(Debug)]
++pub struct DiffRow {
++    pub left_line: Option<DiffCell>,
++    pub right_line: Option<DiffCell>,
++}
++
++#[derive(Debug)]
++pub struct DiffHighlight {
++    pub range: Range<usize>,
++    pub underline: bool,
++}
++
++#[derive(Debug)]
++pub struct DiffCell {
++    pub line_number: usize,
++    pub text: String,
++    pub changed: bool,
++    pub highlights: Vec<DiffHighlight>,
++}
++
++#[derive(Debug)]
++pub struct ClipboardDiff {
++    result: DiffResult,
++    rows: Vec<DiffRow>,
++}
++
++impl ClipboardDiff {
++    pub fn has_changes(&self) -> bool {
++        self.result.has_reportable_change()
++    }
++
++    pub fn language(&self) -> String {
++        self.result.file_format.to_string()
++    }
++
++    pub fn rows(&self) -> &[DiffRow] {
++        &self.rows
++    }
++}
++
++pub fn diff_text(
++    virtual_path: &str,
++    left_source: &str,
++    right_source: &str,
++    options: ClipboardDiffOptions,
++) -> ClipboardDiff {
++    let result = diff_file_content(
++        virtual_path,
++        left_source,
++        right_source,
++        options,
++    );
++    let rows = diff_rows(&result);
++
++    ClipboardDiff { result, rows }
++}
++
++fn check_only_text(
++    file_format: &FileFormat,
++    display_path: &str,
++    extra_info: Option<String>,
++    lhs_src: &str,
++    rhs_src: &str,
++) -> DiffResult {
++    let has_byte_changes = if lhs_src == rhs_src {
++        None
++    } else {
++        Some((lhs_src.as_bytes().len(), rhs_src.as_bytes().len()))
++    };
++
++    DiffResult {
++        display_path: display_path.to_owned(),
++        extra_info,
++        file_format: file_format.clone(),
++        lhs_src: FileContent::Text(lhs_src.into()),
++        rhs_src: FileContent::Text(rhs_src.into()),
++        lhs_positions: vec![],
++        rhs_positions: vec![],
++        hunks: vec![],
++        has_byte_changes,
++        has_syntactic_changes: lhs_src != rhs_src,
++    }
++}
++
++fn diff_file_content(
++    virtual_path: &str,
++    lhs_src: &str,
++    rhs_src: &str,
++    clipboard_options: ClipboardDiffOptions,
++) -> DiffResult {
++    let mut lhs_src = lhs_src.replace('\r', "");
++    let mut rhs_src = rhs_src.replace('\r', "");
++
++    if !lhs_src.is_empty() && !lhs_src.ends_with('\n') {
++        lhs_src.push('\n');
++    }
++
++    if !rhs_src.is_empty() && !rhs_src.ends_with('\n') {
++        rhs_src.push('\n');
++    }
++
++    let extra_info = None;
++    let guess_src = if rhs_src.is_empty() { &lhs_src } else { &rhs_src };
++    let language = guess(Path::new(virtual_path), guess_src, &[]);
++    let lang_config = language.map(|lang| (lang, tsp::from_language(lang)));
++
++    let display_options = DisplayOptions {
++        num_context_lines: clipboard_options.context_lines as u32,
++        ..Default::default()
++    };
++
++    let diff_options = DiffOptions {
++        byte_limit: 1024 * 1024,
++        ignore_comments: clipboard_options.ignore_comments,
++        strip_cr: true,
++        ..Default::default()
++    };
++
++    if lhs_src == rhs_src {
++        let file_format = match language {
++            Some(language) => FileFormat::SupportedLanguage(language),
++            None => FileFormat::PlainText,
++        };
++
++        return DiffResult {
++            extra_info,
++            display_path: virtual_path.to_owned(),
++            file_format,
++            lhs_src: FileContent::Text(lhs_src),
++            rhs_src: FileContent::Text(rhs_src),
++            lhs_positions: vec![],
++            rhs_positions: vec![],
++            hunks: vec![],
++            has_byte_changes: None,
++            has_syntactic_changes: false,
++        };
++    }
++
++    let (file_format, lhs_positions, rhs_positions) = match lang_config {
++        None => {
++            let file_format = FileFormat::PlainText;
++            if diff_options.check_only {
++                return check_only_text(&file_format, virtual_path, extra_info, &lhs_src, &rhs_src);
++            }
++
++            let (lhs_positions, rhs_positions) = line_parser::change_positions(&lhs_src, &rhs_src);
++            (file_format, lhs_positions, rhs_positions)
++        }
++        Some((language, lang_config)) => {
++            let arena = Arena::new();
++            match tsp::to_tree_with_limit(&diff_options, lang_config, &lhs_src, &rhs_src) {
++                Ok((lhs_tree, rhs_tree)) => {
++                    match tsp::to_syntax_with_limit(
++                        &lhs_src,
++                        &rhs_src,
++                        &lhs_tree,
++                        &rhs_tree,
++                        &arena,
++                        lang_config,
++                        &diff_options,
++                    ) {
++                        Ok((lhs, rhs)) => {
++                            if diff_options.check_only {
++                                let has_syntactic_changes = lhs != rhs;
++
++                                let has_byte_changes = if lhs_src == rhs_src {
++                                    None
++                                } else {
++                                    Some((lhs_src.as_bytes().len(), rhs_src.as_bytes().len()))
++                                };
++
++                                return DiffResult {
++                                    extra_info,
++                                    display_path: virtual_path.to_owned(),
++                                    file_format: FileFormat::SupportedLanguage(language),
++                                    lhs_src: FileContent::Text(lhs_src.to_owned()),
++                                    rhs_src: FileContent::Text(rhs_src.to_owned()),
++                                    lhs_positions: vec![],
++                                    rhs_positions: vec![],
++                                    hunks: vec![],
++                                    has_byte_changes,
++                                    has_syntactic_changes,
++                                };
++                            }
++
++                            let mut change_map = ChangeMap::default();
++                            let possibly_changed = if env::var("DFT_DBG_KEEP_UNCHANGED").is_ok() {
++                                vec![(lhs.clone(), rhs.clone())]
++                            } else {
++                                unchanged::mark_unchanged(&lhs, &rhs, &mut change_map)
++                            };
++
++                            let mut exceeded_graph_limit = false;
++
++                            for (lhs_section_nodes, rhs_section_nodes) in possibly_changed {
++                                init_next_prev(&lhs_section_nodes);
++                                init_next_prev(&rhs_section_nodes);
++
++                                match shortest_path::mark_syntax(
++                                    lhs_section_nodes.first().copied(),
++                                    rhs_section_nodes.first().copied(),
++                                    &mut change_map,
++                                    diff_options.graph_limit,
++                                ) {
++                                    Ok(()) => {}
++                                    Err(ExceededGraphLimit {}) => {
++                                        exceeded_graph_limit = true;
++                                        break;
++                                    }
++                                }
++                            }
++
++                            if exceeded_graph_limit {
++                                let (lhs_positions, rhs_positions) =
++                                    line_parser::change_positions(&lhs_src, &rhs_src);
++                                (
++                                    FileFormat::TextFallback {
++                                        reason: "exceeded DFT_GRAPH_LIMIT".into(),
++                                    },
++                                    lhs_positions,
++                                    rhs_positions,
++                                )
++                            } else {
++                                fix_all_sliders(language, &lhs, &mut change_map);
++                                fix_all_sliders(language, &rhs, &mut change_map);
++
++                                let mut lhs_positions = syntax::change_positions(&lhs, &change_map);
++                                let mut rhs_positions = syntax::change_positions(&rhs, &change_map);
++
++                                if diff_options.ignore_comments {
++                                    let lhs_comments =
++                                        tsp::comment_positions(&lhs_tree, &lhs_src, lang_config);
++                                    lhs_positions.extend(lhs_comments);
++
++                                    let rhs_comments =
++                                        tsp::comment_positions(&rhs_tree, &rhs_src, lang_config);
++                                    rhs_positions.extend(rhs_comments);
++                                }
++
++                                (
++                                    FileFormat::SupportedLanguage(language),
++                                    lhs_positions,
++                                    rhs_positions,
++                                )
++                            }
++                        }
++                        Err(tsp::ExceededParseErrorLimit {
++                                error_count,
++                                first_error_pos,
++                            }) => {
++                            let location = match first_error_pos {
++                                Some((line, column, side)) => {
++                                    let in_initial = match side {
++                                        Side::Left => " in initial file",
++                                        Side::Right => "",
++                                    };
++                                    format!(
++                                        ", first at {}:{}{}",
++                                        line.display(),
++                                        column,
++                                        in_initial
++                                    )
++                                }
++                                None => "".to_owned(),
++                            };
++                            let file_format = FileFormat::TextFallback {
++                                reason: format!(
++                                    "{} {} parse error{}, exceeded DFT_PARSE_ERROR_LIMIT{}",
++                                    error_count,
++                                    language_name(language),
++                                    if error_count == 1 { "" } else { "s" },
++                                    location
++                                ),
++                            };
++
++                            if diff_options.check_only {
++                                return check_only_text(
++                                    &file_format,
++                                    virtual_path,
++                                    extra_info,
++                                    &lhs_src,
++                                    &rhs_src,
++                                );
++                            }
++
++                            let (lhs_positions, rhs_positions) =
++                                line_parser::change_positions(&lhs_src, &rhs_src);
++                            (file_format, lhs_positions, rhs_positions)
++                        }
++                    }
++                }
++                Err(tsp::ExceededByteLimit(num_bytes)) => {
++                    let format_options = FormatSizeOptions::from(BINARY).decimal_places(1);
++                    let file_format = FileFormat::TextFallback {
++                        reason: format!(
++                            "{} exceeded DFT_BYTE_LIMIT",
++                            format_size(num_bytes, format_options)
++                        ),
++                    };
++
++                    if diff_options.check_only {
++                        return check_only_text(
++                            &file_format,
++                            virtual_path,
++                            extra_info,
++                            &lhs_src,
++                            &rhs_src,
++                        );
++                    }
++
++                    let (lhs_positions, rhs_positions) =
++                        line_parser::change_positions(&lhs_src, &rhs_src);
++                    (file_format, lhs_positions, rhs_positions)
++                }
++            }
++        }
++    };
++
++    let opposite_to_lhs = opposite_positions(&lhs_positions);
++    let opposite_to_rhs = opposite_positions(&rhs_positions);
++
++    let hunks = matched_pos_to_hunks(&lhs_positions, &rhs_positions);
++    let hunks = merge_adjacent(
++        &hunks,
++        &opposite_to_lhs,
++        &opposite_to_rhs,
++        lhs_src.max_line(),
++        rhs_src.max_line(),
++        display_options.num_context_lines as usize,
++    );
++
++    let has_syntactic_changes = !hunks.is_empty();
++
++    let has_byte_changes = Some((lhs_src.len(), rhs_src.len()));
++
++    DiffResult {
++        extra_info,
++        display_path: virtual_path.to_owned(),
++        file_format,
++        lhs_src: FileContent::Text(lhs_src),
++        rhs_src: FileContent::Text(rhs_src),
++        lhs_positions,
++        rhs_positions,
++        hunks,
++        has_byte_changes,
++        has_syntactic_changes,
++    }
++}
++
++fn diff_rows(result: &DiffResult) -> Vec<DiffRow> {
++    let (FileContent::Text(left_source), FileContent::Text(right_source)) =
++        (&result.lhs_src, &result.rhs_src)
++    else {
++        return Vec::new();
++    };
++
++    let left_lines = source_lines(left_source);
++    let right_lines = source_lines(right_source);
++
++    let (left_novel, right_novel) =
++        lines_with_novel(&result.lhs_positions, &result.rhs_positions);
++
++    let mut aligned_lines = all_matched_lines_filled(
++        &result.lhs_positions,
++        &result.rhs_positions,
++        &left_lines,
++        &right_lines,
++    );
++
++    if aligned_lines.is_empty() {
++        aligned_lines = (0..left_lines.len().max(right_lines.len()))
++            .map(|index| {
++                (
++                    (index < left_lines.len()).then_some(index),
++                    (index < right_lines.len()).then_some(index),
++                )
++            })
++            .map(|(left, right)| {
++                (
++                    left.map(|index| line_numbers::LineNumber(index as u32)),
++                    right.map(|index| line_numbers::LineNumber(index as u32)),
++                )
++            })
++            .collect();
++    }
++
++    aligned_lines
++        .into_iter()
++        .map(|(left_line, right_line)| {
++            let mut left_line = left_line.and_then(|line_number| {
++                diff_cell(&left_lines, &result.lhs_positions, line_number)
++            });
++            let mut right_line = right_line.and_then(|line_number| {
++                diff_cell(&right_lines, &result.rhs_positions, line_number)
++            });
++
++            add_inline_highlights(&mut left_line, &mut right_line);
++
++            DiffRow {
++                left_line,
++                right_line,
++            }
++        })
++        .collect()
++}
++
++fn diff_cell(
++    lines: &[&str],
++    positions: &[MatchedPos],
++    line_number: line_numbers::LineNumber,
++) -> Option<DiffCell> {
++    let text = lines.get(line_number.0 as usize)?.to_string();
++    let changed = positions
++        .iter()
++        .any(|position| position.pos.line == line_number && position.kind.is_novel());
++
++    Some(DiffCell {
++        line_number: line_number.0 as usize + 1,
++        text,
++        changed,
++        highlights: Vec::new(),
++    })
++}
++
++fn add_inline_highlights(
++    left: &mut Option<DiffCell>,
++    right: &mut Option<DiffCell>,
++) {
++    let (Some(left), Some(right)) = (left, right) else {
++        return;
++    };
++
++    if !left.changed && !right.changed {
++        return;
++    }
++
++    let (left_ranges, right_ranges) = word_change_ranges(&left.text, &right.text);
++
++    left.highlights = left_ranges
++        .into_iter()
++        .map(|range| DiffHighlight {
++            range,
++            underline: true,
++        })
++        .collect();
++
++    right.highlights = right_ranges
++        .into_iter()
++        .map(|range| DiffHighlight {
++            range,
++            underline: true,
++        })
++        .collect();
++}
++
++fn word_change_ranges(left: &str, right: &str) -> (Vec<Range<usize>>, Vec<Range<usize>>) {
++    let left_words = crate::words::split_words(left);
++    let right_words = crate::words::split_words(right);
++
++    let mut left_offset = 0;
++    let mut right_offset = 0;
++    let mut left_ranges = Vec::new();
++    let mut right_ranges = Vec::new();
++
++    for difference in crate::diff::lcs_diff::slice_unique_by_hash(&left_words, &right_words) {
++        match difference {
++            crate::diff::lcs_diff::DiffResult::Both(left_word, right_word) => {
++                left_offset += left_word.len();
++                right_offset += right_word.len();
++            }
++            crate::diff::lcs_diff::DiffResult::Left(left_word) => {
++                let range = left_offset..left_offset + left_word.len();
++
++                if !left_word.trim().is_empty() {
++                    left_ranges.push(range);
++                }
++
++                left_offset += left_word.len();
++            }
++            crate::diff::lcs_diff::DiffResult::Right(right_word) => {
++                let range = right_offset..right_offset + right_word.len();
++
++                if !right_word.trim().is_empty() {
++                    right_ranges.push(range);
++                }
++
++                right_offset += right_word.len();
++            }
++        }
++    }
++
++    (
++        merge_ranges(left_ranges),
++        merge_ranges(right_ranges),
++    )
++}
++
++fn merge_ranges(ranges: Vec<Range<usize>>) -> Vec<Range<usize>> {
++    let mut merged = Vec::<Range<usize>>::new();
++
++    for range in ranges {
++        match merged.last_mut() {
++            Some(previous) if range.start <= previous.end => {
++                previous.end = previous.end.max(range.end);
++            }
++            _ => merged.push(range),
++        }
++    }
++
++    merged
++}
++
++fn changed_ranges(left: &str, right: &str) -> Option<(Range<usize>, Range<usize>)> {
++    if left == right {
++        return None;
++    }
++
++    let mut prefix_end = 0;
++
++    for (left_char, right_char) in left.chars().zip(right.chars()) {
++        if left_char != right_char {
++            break;
++        }
++
++        prefix_end += left_char.len_utf8();
++    }
++
++    let left_rest = &left[prefix_end..];
++    let right_rest = &right[prefix_end..];
++
++    let mut left_suffix_start = left.len();
++    let mut right_suffix_start = right.len();
++
++    for (left_char, right_char) in left_rest.chars().rev().zip(right_rest.chars().rev()) {
++        if left_char != right_char {
++            break;
++        }
++
++        left_suffix_start -= left_char.len_utf8();
++        right_suffix_start -= right_char.len_utf8();
++    }
++
++    let left_range = prefix_end..left_suffix_start;
++    let right_range = prefix_end..right_suffix_start;
++
++    if left_range.is_empty() || right_range.is_empty() {
++        return None;
++    }
++
++    Some((left_range, right_range))
++}
++
++fn source_lines(source: &str) -> Vec<&str> {
++    source.split('\n').collect()
++}
++
++#[cfg(test)]
++mod tests {
++    use super::*;
++
++    #[test]
++    fn aligns_an_added_line() {
++        let diff = diff_text(
++            "clipboard.txt",
++            "one\nthree\n",
++            "one\ntwo\nthree\n",
++            ClipboardDiffOptions::default(),
++        );
++
++        assert!(diff.has_changes());
++        assert_eq!(diff.rows().len(), 3);
++
++        assert_eq!(diff.rows()[1].left_line, None);
++        assert_eq!(diff.rows()[1].right_line.as_ref().unwrap().text, "two");
++        assert!(diff.rows()[1].right_line.as_ref().unwrap().changed);
++    }
++}
+\ No newline at end of file
+diff --git a/src/lib.rs b/src/lib.rs
+new file mode 100644
+index 000000000..1688e1e60
+--- /dev/null
++++ b/src/lib.rs
+@@ -0,0 +1,22 @@
++//! In-memory structural diff support for Conv.
++
++#[macro_use]
++extern crate log;
++
++mod conflicts;
++mod constants;
++mod diff;
++mod display;
++mod exit_codes;
++mod files;
++mod gitattributes;
++mod hash;
++mod line_parser;
++mod lines;
++mod options;
++mod parse;
++pub(crate) mod summary;
++mod version;
++mod words;
++
++pub mod clipboard;
+\ No newline at end of file
