@@ -1,6 +1,6 @@
 [package]
 name = "conv"
-version = "0.3.1"
+version = "0.4.0"
 edition = "2024"
 license = "MIT"
 description = "converter tool"
@@ -9,13 +9,15 @@ readme = "README.md"
 homepage = "https://github.com/phunks/conv"
 repository = "https://github.com/phunks/conv"
 
-[profile.release]
-debug = true
-strip = "none"
-lto = "thin"
-codegen-units = 1
-split-debuginfo = "unpacked"
+#[profile.release]
+#debug = true
+#strip = "none"
+#lto = "thin"
+#codegen-units = 1
+#split-debuginfo = "unpacked"
 
+[profile.release]
+strip = "symbols"
 
 [dependencies]
 env_logger = "0.11"
@@ -48,6 +50,7 @@ bytes = "1.12.1"
 taplo = "0.14"
 serde_json = "1"
 serde-saphyr = "1.0"
+log = "0.4.33"
 
 [target.'cfg(windows)'.build-dependencies]
 winres = "0.1"

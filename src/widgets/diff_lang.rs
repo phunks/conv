@@ -1,5 +1,7 @@
 use strum::{EnumMessage, VariantArray};
 
+pub const MAX_STRUCTURAL_DIFF_INPUT_BYTES: usize = 256 * 1024;
+
 #[derive(Default, Clone, Copy, PartialEq, Eq, VariantArray, EnumMessage)]
 pub enum DiffLanguage {
     #[default]
@@ -57,6 +59,27 @@ pub enum DiffLanguage {
 }
 
 impl DiffLanguage {
+    pub const fn structural_diff_input_limit(self) -> Option<usize> {
+        match self {
+            Self::Toml | Self::TypeScript | Self::Html | Self::Css => {
+                Some(MAX_STRUCTURAL_DIFF_INPUT_BYTES)
+            }
+            Self::Text
+            | Self::Json
+            | Self::Yaml
+            | Self::Xml
+            | Self::Rust
+            | Self::JavaScript
+            | Self::Shell
+            | Self::Python
+            | Self::Go
+            | Self::Java
+            | Self::C
+            | Self::Cpp
+            | Self::Sql => None,
+        }
+    }
+
     pub const fn virtual_path(self) -> &'static str {
         match self {
             Self::Text => "clipboard.txt",
@@ -76,28 +99,6 @@ impl DiffLanguage {
             Self::C => "clipboard.c",
             Self::Cpp => "clipboard.cpp",
             Self::Sql => "clipboard.sql",
-        }
-    }
-
-    pub const fn label(self) -> &'static str {
-        match self {
-            Self::Text => "Text",
-            Self::Json => "JSON",
-            Self::Yaml => "YAML",
-            Self::Toml => "TOML",
-            Self::Xml => "XML",
-            Self::Rust => "Rust",
-            Self::JavaScript => "JavaScript",
-            Self::TypeScript => "TypeScript",
-            Self::Html => "HTML",
-            Self::Css => "CSS",
-            Self::Shell => "Shell",
-            Self::Python => "Python",
-            Self::Go => "Go",
-            Self::Java => "Java",
-            Self::C => "C",
-            Self::Cpp => "C++",
-            Self::Sql => "SQL",
         }
     }
 }

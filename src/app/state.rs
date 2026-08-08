@@ -17,6 +17,7 @@ pub struct AppState {
 pub enum DiffView {
     #[default]
     Edit,
+    #[allow(unused)]
     Diff,
 }
 
@@ -29,6 +30,8 @@ pub struct DiffToolOptions {
     pub ignore_comments: bool,
     pub view: DiffView,
     pub scroll_offset: f32,
+    pub change_index: usize,
+    pub pending_change_delta: i32,
 }
 
 impl Default for DiffToolOptions {
@@ -41,6 +44,8 @@ impl Default for DiffToolOptions {
             ignore_comments: false,
             view: DiffView::Edit,
             scroll_offset: 0.0,
+            change_index: usize::MAX,
+            pending_change_delta: 0,
         }
     }
 }

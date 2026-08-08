@@ -8,6 +8,10 @@ use crate::app::result::ConvertResult;
 use crate::app::state::SelectedTool;
 use crate::widgets::input_editor::LayoutCache;
 
+// Display-only marker indicating a virtual empty line.
+// Exclude in canonical source and clipboard output.
+pub const VIRTUAL_LINE_MARKER: char = '\u{25B8}';
+
 #[derive(Default)]
 pub struct AppCache {
     pub outputs: OutputCaches,
@@ -19,8 +23,67 @@ pub struct AppCache {
 #[derive(Default)]
 pub struct DiffCache {
     pub result: Option<ClipboardDiff>,
+    pub aligned: Option<AlignedDiff>,
     pub error: Option<String>,
     pub update_deadline: Option<Instant>,
+}
+
+#[derive(Clone, Copy, Debug, Default)]
+pub struct ChangeMarker {
+    // The starting display line of the change block.
+    pub display_row: usize,
+
+    // End display line (exclusive) of the changed block.
+    pub end_display_row: usize,
+
+    // The character offset of the beginning of the changed line
+    //  in the aligned text in the left pane.
+    pub left_char_offset: usize,
+
+    // Actual scroll destination Y coordinate taken from the last galley.
+    pub scroll_y: f32,
+}
+
+#[derive(Default)]
+pub struct AlignedDiff {
+    pub left: AlignedPane,
+    pub right: AlignedPane,
+    pub left_wrap_width: f32,
+    pub right_wrap_width: f32,
+    // Actual scroll destination for each changed line.
+    pub change_markers: Vec<ChangeMarker>,
+    // Total number of displayed lines on both sides,
+    // including virtual lines and wrapping.
+    pub total_display_rows: usize,
+}
+
+#[derive(Default)]
+pub struct AlignedPane {
+    pub text: String,
+    pub line_numbers: String,
+    pub lines: Vec<AlignedLine>,
+    pub had_trailing_newline: bool,
+}
+
+impl AlignedLine {
+    pub const fn source(source_line: usize) -> Self {
+        Self {
+            source_line: Some(source_line),
+        }
+    }
+
+    pub const fn virtual_blank() -> Self {
+        Self { source_line: None }
+    }
+
+    pub const fn is_virtual_blank(self) -> bool {
+        self.source_line.is_none()
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct AlignedLine {
+    pub source_line: Option<usize>,
 }
 
 #[derive(Default)]

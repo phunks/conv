@@ -11,11 +11,15 @@ mod converters;
 mod widgets;
 mod util;
 use crate::app::ui::App;
-
+use env_logger::{Builder, Target};
+use log::LevelFilter;
 
 const CONV_ICON: &[u8; 2132] = include_bytes!("../assets/icon_conv.svg");
 fn main() -> eframe::Result {
-    env_logger::init();
+    Builder::from_default_env()
+        .target(Target::Stdout)
+        .filter_level(LevelFilter::Off)
+        .init();
 
     let icon = load_svg_bytes_with_size(CONV_ICON, Option::from(Size(128, 128))).unwrap();
     let size = icon.width() as u32;

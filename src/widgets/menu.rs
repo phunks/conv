@@ -1,4 +1,4 @@
-use eframe::egui::{ComboBox, TextEdit, Ui};
+use eframe::egui::{ComboBox, Ui};
 use strum::{EnumMessage, VariantArray};
 use crate::app::state::{AppState, SelectedTool};
 use crate::converters::base64::Base64Options;
@@ -402,27 +402,19 @@ fn diff_menu_ui(ui: &mut Ui, state: &mut AppState) -> bool {
     ui.label("language:");
     changed |= combobox(ui, "menu.diff.language", &mut options.language);
 
-    // changed |= ui
-    //     .selectable_value(&mut options.view, crate::app::state::DiffView::Edit, "Edit")
-    //     .changed();
-    //
-    // changed |= ui
-    //     .selectable_value(&mut options.view, crate::app::state::DiffView::Diff, "Diff")
-    //     .changed();
-
     changed |= ui
         .checkbox(&mut options.ignore_comments, "ignore comments")
         .changed();
 
     ui.separator();
-    //
-    // if ui.button("Copy left").clicked() {
-    //     ui.ctx().copy_text(options.left.clone());
-    // }
-    //
-    // if ui.button("Copy right").clicked() {
-    //     ui.ctx().copy_text(options.right.clone());
-    // }
+
+    if ui.button("↑ Prev").clicked() {
+        options.pending_change_delta -= 1;
+    }
+
+    if ui.button("↓ Next").clicked() {
+        options.pending_change_delta += 1;
+    }
 
     if ui.button("Swap").clicked() {
         std::mem::swap(&mut options.left, &mut options.right);

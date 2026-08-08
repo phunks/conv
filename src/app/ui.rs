@@ -140,7 +140,7 @@ impl App {
     }
 
     fn diff_ui(&mut self, ui: &mut Ui) {
-        const DIFF_DEBOUNCE: Duration = Duration::from_millis(200);
+        const DIFF_DEBOUNCE: Duration = Duration::from_millis(30);
 
         let toolbar_changed = crate::widgets::menu::menu_ui(ui, &mut self.state);
 
@@ -154,7 +154,7 @@ impl App {
         let editor_changed = crate::widgets::diff_editor::diff_editor_ui(
             ui,
             &mut self.state.options.diff,
-            &self.cache.diff,
+            &mut self.cache.diff,
         );
 
         if editor_changed {
@@ -193,12 +193,32 @@ impl App {
 
         if options.left.is_empty() && options.right.is_empty() {
             self.cache.diff.result = None;
+            self.cache.diff.aligned = None;
             self.cache.diff.error = Some("paste text into either side to compare".to_owned());
             return;
         }
 
+        let structural_input_limit = options.language.structural_diff_input_limit();
+        let structural_input_too_large = structural_input_limit.is_some_and(|limit| {
+            options.left.len() > limit || options.right.len() > limit
+        });
+
+        let (virtual_path, fallback_message) = if structural_input_too_large {
+            let limit = structural_input_limit.expect("limit must exist when fallback is enabled");
+
+            (
+                "clipboard.txt",
+                Some(format!(
+                    "input exceeds {} KiB for this structural diff; showing a plain-text diff",
+                    limit / 1024,
+                )),
+            )
+        } else {
+            (options.language.virtual_path(), None)
+        };
+
         self.cache.diff.result = Some(difftastic::clipboard::diff_text(
-            options.language.virtual_path(),
+            virtual_path,
             &options.left,
             &options.right,
             difftastic::clipboard::ClipboardDiffOptions {
@@ -206,7 +226,11 @@ impl App {
                 ignore_comments: options.ignore_comments,
             },
         ));
-        self.cache.diff.error = None;
+
+        self.state.options.diff.change_index = usize::MAX;
+        self.state.options.diff.pending_change_delta = 0;
+        self.cache.diff.aligned = None;
+        self.cache.diff.error = fallback_message;
     }
 }
 

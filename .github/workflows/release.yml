@@ -40,11 +40,13 @@ jobs:
         with:
           targets: ${{ matrix.job.target }}
 
-      - name: Setup Zig
-        uses: goto-bus-stop/setup-zig@v2
-
-      - name: Install cargo-zigbuild
-        uses: taiki-e/install-action@cargo-zigbuild
+      - name: Install native and cross toolchains
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y musl-tools
+          cargo install cross --locked
 
       - name: Install just
         uses: taiki-e/install-action@just
@@ -58,16 +60,29 @@ jobs:
         run: |
           just setup-ext
 
-      - name: Build
+      - name: Linux Build
         shell: bash
         env:
           RUSTFLAGS: -C strip=symbols
         run: |
-          if [ "${{ runner.os }}" = "Linux" ]; then
-            cargo zigbuild --release --target "${{ matrix.job.target }}"
-          else
-            cargo build --release --target "${{ matrix.job.target }}"
-          fi
+          target="${{ matrix.job.target }}"
+          
+          case "$target" in
+            x86_64-unknown-linux-gnu)
+              cargo build --release --target "$target"
+              ;;
+            x86_64-unknown-linux-musl)
+              export CC_x86_64_unknown_linux_musl=musl-gcc
+              export CARGO_TARGET_X86_64_UNKNOWN_LINUX_MUSL_LINKER=musl-gcc
+              cargo build --release --target "$target"
+              ;;
+            armv7-unknown-linux-musleabihf|aarch64-unknown-linux-gnu|aarch64-unknown-linux-musl)
+              cross build --release --target "$target"
+              ;;
+            *)
+              cargo build --release --target "${{ matrix.job.target }}"
+              ;;
+          esac
 
       - name: Rename artifacts
         if: runner.os != 'macOS'
@@ -100,7 +115,7 @@ jobs:
           $releaseDirectory = "target/${{ matrix.job.target }}/release"
           
           Compress-Archive `
-          -Path "$releaseDirectory/$releaseName.exe", "README.md", "LICENSE" `
+          -Path "$releaseDirectory/$releaseName.exe", "LICENSE" `
           -DestinationPath "$releaseDirectory/$releaseName.zip"
 
       - name: Upload Linux release file
