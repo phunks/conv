@@ -6,7 +6,11 @@ use eframe::egui::text::LayoutJob;
 use jaq_core::compile;
 use jaq_core::load::{lex, File};
 use jaq_json::{read, Val};
-use crate::converters::data::{color_from_hex, visible_indentation, Settings};
+use crate::converters::data::{visible_indentation, Settings};
+use crate::app::colors::{
+    DIAGNOSTIC_RED, DIAGNOSTIC_YELLOW, JSON_BOOLEAN, JSON_KEY, JSON_NULL, JSON_NUMBER,
+    JSON_STRING, TEXT_MUTED,
+};
 
 #[derive(Clone, Copy)]
 pub(crate) enum JqColor {
@@ -131,14 +135,14 @@ fn append_jq_text(job: &mut LayoutJob, text: &str, color: JqColor) {
     if text.is_empty() {
         return;
     }
-
+    
     let color = match color {
-        JqColor::Plain => Color32::GRAY,
-        JqColor::Null => color_from_hex("#a09a9a"),
-        JqColor::Boolean => color_from_hex("#4892ef"),
-        JqColor::Number => color_from_hex("#fbab23"),
-        JqColor::Key => color_from_hex("#7d9bb5"),
-        JqColor::String => color_from_hex("#dfdfdf"),
+        JqColor::Plain => TEXT_MUTED,
+        JqColor::Null => JSON_NULL,
+        JqColor::Boolean => JSON_BOOLEAN,
+        JqColor::Number => JSON_NUMBER,
+        JqColor::Key => JSON_KEY,
+        JqColor::String => JSON_STRING,
     };
 
     job.append(
@@ -258,7 +262,7 @@ fn reports_layout(file_reports: Vec<FileReports>) -> LayoutJob {
             append_diagnostic_text(
                 &mut job,
                 &format!("⚠️  Error: {}\n", report.message),
-                Color32::GRAY,
+                TEXT_MUTED,
             );
 
             let block = report.into_block(&index);
@@ -266,7 +270,7 @@ fn reports_layout(file_reports: Vec<FileReports>) -> LayoutJob {
             append_diagnostic_text(
                 &mut job,
                 &format!("{}\n", block.prologue()),
-                Color32::GRAY,
+                TEXT_MUTED,
             );
 
             append_diagnostic_html_layout(&mut job, &block.to_string());
@@ -274,7 +278,7 @@ fn reports_layout(file_reports: Vec<FileReports>) -> LayoutJob {
             append_diagnostic_text(
                 &mut job,
                 &format!("{}\n", block.epilogue()),
-                Color32::GRAY,
+                TEXT_MUTED,
             );
         }
     }
@@ -431,14 +435,14 @@ fn visible_indentation_fragment(
 
 fn color_from_str(class: Option<&str>) -> Color32 {
     match class {
-        Some("red") => color_from_hex("#ab7f1a"),
-        Some("yellow") => color_from_hex("#d53130"),
-        Some("null") => color_from_hex("#a09a9a"),
-        Some("key") => color_from_hex("#7d9bb5"),
-        Some("string") => color_from_hex("#dfdfdf"),
-        Some("number") => color_from_hex("#fbab23"),
-        Some("boolean") => color_from_hex("#4892ef"),
-        _ => Color32::GRAY,
+        Some("red") => DIAGNOSTIC_RED,
+        Some("yellow") => DIAGNOSTIC_YELLOW,
+        Some("null") => JSON_NULL,
+        Some("key") => JSON_KEY,
+        Some("string") => JSON_STRING,
+        Some("number") => JSON_NUMBER,
+        Some("boolean") => JSON_BOOLEAN,
+        _ => TEXT_MUTED,
     }
 }
 

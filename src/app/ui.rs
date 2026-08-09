@@ -194,7 +194,7 @@ impl App {
         if options.left.is_empty() && options.right.is_empty() {
             self.cache.diff.result = None;
             self.cache.diff.aligned = None;
-            self.cache.diff.error = Some("paste text into either side to compare".to_owned());
+            // self.cache.diff.error = Some("paste text into either side to compare".to_owned());
             return;
         }
 
@@ -230,6 +230,8 @@ impl App {
         self.state.options.diff.change_index = usize::MAX;
         self.state.options.diff.pending_change_delta = 0;
         self.cache.diff.aligned = None;
+        self.cache.diff.layout.left.clear();
+        self.cache.diff.layout.right.clear();
         self.cache.diff.error = fallback_message;
     }
 }

@@ -2,7 +2,7 @@ use crate::app::result::ConvertResult;
 use crate::app::state::AppState;
 use crate::converters::Converter;
 use core::fmt::{self, Debug, Formatter};
-use eframe::egui::{Color32, FontFamily, FontId, TextFormat, Ui};
+use eframe::egui::{FontFamily, FontId, TextFormat, Ui};
 use eframe::egui::text::LayoutJob;
 use jaq_core::load::{Arena, File, Loader};
 use jaq_core::{compile, Ctx, Native, Vars};
@@ -13,6 +13,7 @@ use jaq_core::data::JustLut;
 use crate::converters::data::csv::CsvOutput;
 use crate::converters::data::json::{append_value, format_compile_errors, format_load_errors, json_key, json_slice, json_string};
 use crate::widgets::menu::{InputFormat, OutputFormat};
+use crate::app::colors::{TEXT_MUTED, WARNING};
 
 pub(crate) mod format;
 pub(crate) mod csv;
@@ -79,7 +80,7 @@ impl DataFormatConverter {
             }
         }) {
             Ok(()) if let Some(error) = format_error => {
-                ui.colored_label(Color32::ORANGE, format!("warn: TOML output: {error}"));
+                ui.colored_label(WARNING, format!("warn: TOML output: {error}"));
             }
             Ok(()) => {
                 ui.label(output);
@@ -88,10 +89,10 @@ impl DataFormatConverter {
                 ui.label(job);
             }
             Err(RunError::Parse(message)) => {
-                ui.colored_label(Color32::ORANGE, format!("warn: parse error: {message}"));
+                ui.colored_label(WARNING, format!("warn: parse error: {message}"));
             }
             Err(RunError::Jaq(error)) => {
-                ui.colored_label(Color32::ORANGE, format!("warn: {error}"));
+                ui.colored_label(WARNING, format!("warn: {error}"));
             }
         }
     }
@@ -435,7 +436,7 @@ fn append_data_text(job: &mut LayoutJob, text: &str) {
         0.0,
         TextFormat {
             font_id: FontId::new(11.5, FontFamily::Monospace),
-            color: Color32::GRAY,
+            color: TEXT_MUTED,
             ..Default::default()
         },
     );
@@ -492,27 +493,6 @@ where
     }
 
     opts.indent(f, level)
-}
-
-fn color_from_hex(hex: &str) -> Color32 {
-    let Some(hex) = hex.strip_prefix('#') else {
-        return Color32::GRAY;
-    };
-
-    if hex.len() != 6 {
-        return Color32::GRAY;
-    }
-
-    let parse_component = |range| u8::from_str_radix(&hex[range], 16).ok();
-
-    match (
-        parse_component(0..2),
-        parse_component(2..4),
-        parse_component(4..6),
-    ) {
-        (Some(red), Some(green), Some(blue)) => Color32::from_rgb(red, green, blue),
-        _ => Color32::GRAY,
-    }
 }
 
 fn visible_indentation(text: &str, tab_width: usize) -> String {

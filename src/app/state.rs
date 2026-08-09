@@ -13,14 +13,6 @@ pub struct AppState {
     pub options: ToolOptions,
 }
 
-#[derive(Default, Clone, Copy, PartialEq, Eq)]
-pub enum DiffView {
-    #[default]
-    Edit,
-    #[allow(unused)]
-    Diff,
-}
-
 #[derive(Clone, PartialEq)]
 pub struct DiffToolOptions {
     pub left: String,
@@ -28,7 +20,7 @@ pub struct DiffToolOptions {
     pub language: DiffLanguage,
     pub context_lines: usize,
     pub ignore_comments: bool,
-    pub view: DiffView,
+    pub show_hex: bool,
     pub scroll_offset: f32,
     pub change_index: usize,
     pub pending_change_delta: i32,
@@ -42,7 +34,7 @@ impl Default for DiffToolOptions {
             language: DiffLanguage::Text,
             context_lines: 3,
             ignore_comments: false,
-            view: DiffView::Edit,
+            show_hex: false,
             scroll_offset: 0.0,
             change_index: usize::MAX,
             pending_change_delta: 0,

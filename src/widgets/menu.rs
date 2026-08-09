@@ -406,6 +406,11 @@ fn diff_menu_ui(ui: &mut Ui, state: &mut AppState) -> bool {
         .checkbox(&mut options.ignore_comments, "ignore comments")
         .changed();
 
+    changed |= ui
+        .checkbox(&mut options.show_hex, "hex view")
+        .on_hover_text("show the current source line as UTF-8 bytes")
+        .changed();
+
     ui.separator();
 
     if ui.button("↑ Prev").clicked() {

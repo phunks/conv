@@ -26,6 +26,76 @@ pub struct DiffCache {
     pub aligned: Option<AlignedDiff>,
     pub error: Option<String>,
     pub update_deadline: Option<Instant>,
+    pub hex: DiffHexCache,
+    pub layout: DiffLayoutCache,
+    pub selection: DiffSelectionCache,
+}
+
+#[derive(Default)]
+pub struct DiffSelectionCache {
+    pub left: Option<std::ops::Range<usize>>,
+    pub right: Option<std::ops::Range<usize>>,
+}
+
+#[derive(Default)]
+pub struct DiffLayoutCache {
+    pub left: DiffPaneGalleyCache,
+    pub right: DiffPaneGalleyCache,
+}
+
+#[derive(Default)]
+pub struct DiffPaneGalleyCache {
+    style: Style,
+    text: String,
+    wrap_width: f32,
+    galley: Option<Arc<Galley>>,
+}
+
+impl DiffPaneGalleyCache {
+    pub fn galley(
+        &mut self,
+        ui: &Ui,
+        text: &str,
+        wrap_width: f32,
+        create_job: impl FnOnce() -> text::LayoutJob,
+    ) -> Arc<Galley> {
+        let needs_update = self.galley.is_none()
+            || self.text != text
+            || self.style != *ui.style().as_ref()
+            || (self.wrap_width - wrap_width).abs() > f32::EPSILON;
+
+        if needs_update {
+            self.style = ui.style().as_ref().clone();
+            text.clone_into(&mut self.text);
+            self.wrap_width = wrap_width;
+
+            self.galley = Some(ui.fonts(|fonts| fonts.layout_job(create_job())));
+        }
+
+        self.galley
+            .as_ref()
+            .expect("diff galley cache must be initialized")
+            .clone()
+    }
+
+    pub fn clear(&mut self) {
+        self.text.clear();
+        self.galley = None;
+    }
+}
+
+#[derive(Default)]
+pub struct DiffHexCache {
+    pub left: HexLineCache,
+    pub right: HexLineCache,
+}
+
+#[derive(Default)]
+pub struct HexLineCache {
+    pub line_number: Option<usize>,
+    pub source_line: String,
+    pub text: String,
+    pub byte_ranges: Vec<std::ops::Range<usize>>,
 }
 
 #[derive(Clone, Copy, Debug, Default)]

@@ -4,9 +4,10 @@ use crate::app::state::AppState;
 use crate::converters::Converter;
 use crate::widgets::menu::RegexMenu;
 use eframe::egui::text::LayoutJob;
-use eframe::egui::{Color32, FontFamily, FontId, TextFormat};
+use eframe::egui::{FontFamily, FontId, TextFormat};
 use fancy_regex::Regex;
 use std::iter::zip;
+use crate::app::colors::WARNING;
 
 #[derive(Default, Clone, PartialEq)]
 pub struct RegexOptions {
@@ -170,11 +171,12 @@ fn highlight_line(job: &mut LayoutJob, regex: &Regex, hay: &str, options: &Regex
         .filter_map(Result::ok)
         .collect::<Vec<_>>();
 
+    let replacement = unescape_replacement(&options.replace);
     let match_strings: Vec<String> =
         if options.replace_enabled && options.mode == RegexMenu::Regex {
             matches
                 .iter()
-                .map(|m| regex.replace(m.as_str(), options.replace.as_str()).into_owned())
+                .map(|m| regex.replace(m.as_str(), replacement.as_str()).into_owned())
                 .collect()
         } else {
             matches.iter().map(|m| m.as_str().to_string()).collect()
@@ -191,6 +193,33 @@ fn highlight_line(job: &mut LayoutJob, regex: &Regex, hay: &str, options: &Regex
         append_plain(job, split);
         append_match(job, &matched);
     }
+}
+
+fn unescape_replacement(text: &str) -> String {
+    let mut result = String::with_capacity(text.len());
+    let mut chars = text.chars();
+
+    while let Some(character) = chars.next() {
+        if character != '\\' {
+            result.push(character);
+            continue;
+        }
+
+        match chars.next() {
+            Some('n') => result.push('\n'),
+            Some('r') => result.push('\r'),
+            Some('t') => result.push('\t'),
+            Some('0') => result.push('\0'),
+            Some('\\') => result.push('\\'),
+            Some(character) => {
+                result.push('\\');
+                result.push(character);
+            }
+            None => result.push('\\'),
+        }
+    }
+
+    result
 }
 
 fn append_plain(job: &mut LayoutJob, text: &str) {
@@ -218,7 +247,7 @@ fn append_match(job: &mut LayoutJob, text: &str) {
         0.0,
         TextFormat {
             font_id: FontId::new(12.5, FontFamily::Proportional),
-            color: Color32::ORANGE,
+            color: WARNING,
             ..Default::default()
         },
     );

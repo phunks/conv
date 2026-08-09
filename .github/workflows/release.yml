@@ -27,7 +27,7 @@ jobs:
           - { os: windows-latest , target: x86_64-pc-windows-msvc          , extension: .exe }
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Extract crate information
         shell: bash
@@ -107,6 +107,17 @@ jobs:
             "$bundle_dir" \
             "target/${{ matrix.job.target }}/release/${release_name}.zip"
 
+      - name: Package Linux release
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          release_name="${PROJECT_NAME}-${GITHUB_REF_NAME}-${{ matrix.job.target }}"
+          release_directory="target/${{ matrix.job.target }}/release"
+          
+          tar -C "$release_directory" -czf "$release_directory/$release_name.tar.gz" \
+            "$release_name" \
+            -C "$GITHUB_WORKSPACE" LICENSE
+
       - name: Package Windows release
         if: runner.os == 'Windows'
         shell: pwsh
@@ -118,17 +129,17 @@ jobs:
           -Path "$releaseDirectory/$releaseName.exe", "LICENSE" `
           -DestinationPath "$releaseDirectory/$releaseName.zip"
 
-      - name: Upload Linux release file
+      - name: Upload Linux release archive
         if: runner.os == 'Linux'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: release-${{ matrix.job.target }}
-          path: target/${{ matrix.job.target }}/release/${{ env.PROJECT_NAME }}-${{ github.ref_name }}-${{ matrix.job.target }}
+          path: target/${{ matrix.job.target }}/release/${{ env.PROJECT_NAME }}-${{ github.ref_name }}-${{ matrix.job.target }}.tar.gz
           if-no-files-found: error
 
       - name: Upload macOS release archive
         if: runner.os == 'macOS'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: release-${{ matrix.job.target }}
           path: target/${{ matrix.job.target }}/release/${{ env.PROJECT_NAME }}-${{ github.ref_name }}-${{ matrix.job.target }}.zip
@@ -136,7 +147,7 @@ jobs:
 
       - name: Upload Windows release archive
         if: runner.os == 'Windows'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: release-${{ matrix.job.target }}
           path: target/${{ matrix.job.target }}/release/${{ env.PROJECT_NAME }}-${{ github.ref_name }}-${{ matrix.job.target }}.zip

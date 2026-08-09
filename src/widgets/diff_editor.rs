@@ -1,15 +1,25 @@
 use std::ops::Range;
 
-use eframe::egui::text::LayoutJob;
-use eframe::egui::{Align, Color32, Layout, Margin, OutputCommand,
-                   RichText, ScrollArea, Stroke, TextEdit, TextFormat, TextStyle, Ui};
+use eframe::egui::text::{CCursorRange, LayoutJob};
+use eframe::egui::{Align, Color32, Frame, Id, Label, Layout, Margin, OutputCommand, RichText, ScrollArea, Stroke, TextEdit, TextFormat, TextStyle, TextWrapMode, Ui};
+use eframe::egui::style::ScrollStyle;
+use eframe::egui::text_edit::TextEditState;
 use log::debug;
 use crate::app::cache::{
-    AlignedDiff, AlignedLine, AlignedPane, DiffCache, VIRTUAL_LINE_MARKER,
+    AlignedDiff, AlignedLine, AlignedPane, DiffCache, HexLineCache, VIRTUAL_LINE_MARKER,
 };
-use crate::app::state::{DiffToolOptions, DiffView};
+use crate::app::colors::{DIFF_RIGHT_BG, DIFF_RIGHT_FG, DIFF_BORDER, DIFF_HIGHLIGHT_UNDERLINE, DIFF_LEFT_BG, DIFF_LEFT_FG, DIFF_SELECTION, STATUS_CHANGED, STATUS_UNCHANGED, TEXT_ON_ACCENT, TRANSPARENT, WARNING};
+use crate::app::state::DiffToolOptions;
 
 pub const MAX_DIFF_INPUT_BYTES: usize = 1024 * 1024;
+
+const MAX_HEX_LINE_BYTES: usize = 64 * 1024;
+
+#[derive(Clone, Default)]
+struct HexSelection {
+    line_number: Option<usize>,
+    byte_range: Option<Range<usize>>,
+}
 
 pub fn diff_editor_ui(
     ui: &mut Ui,
@@ -19,28 +29,21 @@ pub fn diff_editor_ui(
     let mut changed = false;
 
     if options.left.len() > MAX_DIFF_INPUT_BYTES {
-        ui.colored_label(Color32::ORANGE, "left input exceeds 1 MiB");
+        ui.colored_label(WARNING, "left input exceeds 1 MiB");
     }
 
     if options.right.len() > MAX_DIFF_INPUT_BYTES {
-        ui.colored_label(Color32::ORANGE, "right input exceeds 1 MiB");
+        ui.colored_label(WARNING, "right input exceeds 1 MiB");
     }
 
     if let Some(error) = &cache.error {
-        ui.colored_label(Color32::ORANGE, error);
+        ui.colored_label(WARNING, error);
     }
 
     diff_status_ui(ui, options, cache);
     ui.add_space(ui.spacing().item_spacing.y);
 
-    match options.view {
-        DiffView::Edit => {
-            changed |= edit_ui(ui, options, cache);
-        }
-        DiffView::Diff => {
-            diff_ui(ui, cache);
-        }
-    }
+    changed |= edit_ui(ui, options, cache);
 
     changed
 }
@@ -50,7 +53,7 @@ fn edit_ui(
     options: &mut DiffToolOptions,
     cache: &mut DiffCache,
 ) -> bool {
-    const LINE_NUMBER_WIDTH: f32 = 52.0;
+    const LINE_NUMBER_WIDTH: f32 = 50.0;
     const TEXT_EDIT_HORIZONTAL_MARGIN: f32 = 8.0;
     ui.spacing_mut().item_spacing.x = 0.0;
     let columns_width = (ui.available_width() - ui.spacing().item_spacing.x) * 0.5;
@@ -92,6 +95,8 @@ fn edit_ui(
                     "",
                     LINE_NUMBER_WIDTH,
                     left_size.y,
+                    None,
+                    TRANSPARENT,
                 );
 
                 ui.add_sized(
@@ -113,6 +118,8 @@ fn edit_ui(
                     "",
                     LINE_NUMBER_WIDTH,
                     right_size.y,
+                    None,
+                    TRANSPARENT,
                 );
 
                 ui.add_sized(
@@ -167,18 +174,46 @@ fn edit_ui(
 
     let scroll_offset = options.scroll_offset;
     let ctx = ui.ctx().clone();
+    let left_editor_id = eframe::egui::Id::new("diff.left.editor");
+    let right_editor_id = eframe::egui::Id::new("diff.right.editor");
+    let left_active_line = source_line_at_cursor(
+        &ctx,
+        left_editor_id,
+        &aligned.left.text,
+        &aligned.left.lines,
+    );
+    let right_active_line = source_line_at_cursor(
+        &ctx,
+        right_editor_id,
+        &aligned.right.text,
+        &aligned.right.lines,
+    );
     let result = cache.result.as_ref();
     let left_lines = aligned.left.lines.clone();
     let right_lines = aligned.right.lines.clone();
     let left_line_numbers = aligned.left.line_numbers.clone();
     let right_line_numbers = aligned.right.line_numbers.clone();
+    let left_saved_selection = cache.selection.left.clone();
+    let right_saved_selection = cache.selection.right.clone();
+    let left_layout_cache = &mut cache.layout.left;
+    let right_layout_cache = &mut cache.layout.right;
+
+    let hex_height = if options.show_hex {
+        ui.text_style_height(&TextStyle::Monospace) * 2.0
+            + ui.spacing().item_spacing.y
+            + 20.0
+    } else {
+        0.0
+    };
+    let editor_height = (ui.available_height() - hex_height).max(0.0);
 
     let (left_response, right_response) = ui.columns(2, |columns| {
         let left = ScrollArea::vertical()
             .id_salt("diff.left.editor.scroll")
             .vertical_scroll_offset(scroll_offset)
+            .max_height(editor_height)
             .show(&mut columns[0], |ui| {
-                let desired_size = ui.available_size();
+                let desired_size = eframe::egui::vec2(ui.available_width(), editor_height);
                 let content_width = (desired_size.x - LINE_NUMBER_WIDTH).max(0.0);
 
                 ui.horizontal_top(|ui| {
@@ -188,40 +223,30 @@ fn edit_ui(
                         &left_line_numbers,
                         LINE_NUMBER_WIDTH,
                         desired_size.y,
+                        left_active_line,
+                        DIFF_LEFT_FG,
                     );
 
                     let mut layouter = |ui: &Ui, text: &str, wrap_width: f32| {
-                        let mut job = aligned_diff_layout(
-                            ui,
-                            text,
-                            &left_lines,
-                            result,
-                            DiffSide::Left,
-                        );
-                        job.wrap.max_width = wrap_width;
-                        job.wrap.break_anywhere = true;
-
-                        let galley = ui.fonts(|fonts| fonts.layout_job(job));
-
-                        debug!(
-                            "left actual wrap width: {wrap_width}, text rows: {}, line-number rows: {}",
-                            galley.rows.len(),
-                            left_line_numbers.split('\n').count(),
-                        );
-
-                        debug!(
-                            "left actual rows: {}, aligned logical rows: {}",
-                            galley.rows.len(),
-                            left_lines.len(),
-                        );
-
-                        galley
+                        left_layout_cache.galley(ui, text, wrap_width, || {
+                            let mut job = aligned_diff_layout(
+                                ui,
+                                text,
+                                &left_lines,
+                                result,
+                                DiffSide::Left,
+                                left_saved_selection.as_ref(),
+                            );
+                            job.wrap.max_width = wrap_width;
+                            job.wrap.break_anywhere = true;
+                            job
+                        })
                     };
 
                     ui.add_sized(
                         [content_width, desired_size.y],
                         TextEdit::multiline(&mut aligned.left.text)
-                            .id_salt("diff.left.editor")
+                            .id(left_editor_id)
                             .desired_width(content_width)
                             .font(TextStyle::Monospace)
                             .layouter(&mut layouter),
@@ -233,8 +258,9 @@ fn edit_ui(
         let right = ScrollArea::vertical()
             .id_salt("diff.right.editor.scroll")
             .vertical_scroll_offset(scroll_offset)
+            .max_height(editor_height)
             .show(&mut columns[1], |ui| {
-                let desired_size = ui.available_size();
+                let desired_size = eframe::egui::vec2(ui.available_width(), editor_height);
                 let content_width = (desired_size.x - LINE_NUMBER_WIDTH).max(0.0);
 
                 ui.horizontal_top(|ui| {
@@ -244,25 +270,30 @@ fn edit_ui(
                         &right_line_numbers,
                         LINE_NUMBER_WIDTH,
                         desired_size.y,
+                        right_active_line,
+                        DIFF_RIGHT_FG,
                     );
 
                     let mut layouter = |ui: &Ui, text: &str, wrap_width: f32| {
-                        let mut job = aligned_diff_layout(
-                            ui,
-                            text,
-                            &right_lines,
-                            result,
-                            DiffSide::Right,
-                        );
-                        job.wrap.max_width = wrap_width;
-                        job.wrap.break_anywhere = true;
-                        ui.fonts(|fonts| fonts.layout_job(job))
+                        right_layout_cache.galley(ui, text, wrap_width, || {
+                            let mut job = aligned_diff_layout(
+                                ui,
+                                text,
+                                &right_lines,
+                                result,
+                                DiffSide::Right,
+                                right_saved_selection.as_ref(),
+                            );
+                            job.wrap.max_width = wrap_width;
+                            job.wrap.break_anywhere = true;
+                            job
+                        })
                     };
 
                     ui.add_sized(
                         [content_width, desired_size.y],
                         TextEdit::multiline(&mut aligned.right.text)
-                            .id_salt("diff.right.editor")
+                            .id(right_editor_id)
                             .desired_width(content_width)
                             .font(TextStyle::Monospace)
                             .layouter(&mut layouter),
@@ -299,6 +330,80 @@ fn edit_ui(
 
         (left.inner, right.inner)
     });
+
+    update_saved_selection(
+        &ctx,
+        left_response.id,
+        &mut cache.selection.left,
+        &mut cache.layout.left,
+    );
+    update_saved_selection(
+        &ctx,
+        right_response.id,
+        &mut cache.selection.right,
+        &mut cache.layout.right,
+    );
+
+    if options.show_hex {
+        let left_selection = hex_selection(
+            &ctx,
+            left_response.id,
+            &aligned.left.text,
+            &aligned.left.lines,
+        );
+        let right_selection = hex_selection(
+            &ctx,
+            right_response.id,
+            &aligned.right.text,
+            &aligned.right.lines,
+        );
+
+        ui.add_space(ui.spacing().item_spacing.y);
+
+        Frame::canvas(ui.style())
+            .stroke(Stroke::new(1.5_f32, DIFF_BORDER))
+            .inner_margin(8.0)
+            .outer_margin(Margin {
+                left: 2,
+                right: 0,
+                ..Default::default()
+            })
+            .show(ui, |ui| {
+                ui.style_mut().spacing.scroll = ScrollStyle {
+                    floating: true,
+                    bar_width: 2.0,
+                    ..ScrollStyle::solid()
+                };
+                ui.horizontal(|ui| {
+                    ui.vertical(|ui| {
+                        ui.label("L: ");
+                        ui.label("R: ");
+                    });
+                    ScrollArea::horizontal()
+                        .id_salt("diff.hex.scroll")
+                        .auto_shrink([false, true])
+                        .show(ui, |ui| {
+                            ui.vertical(|ui| {
+                                hex_line_ui(
+                                    ui,
+                                    &options.left,
+                                    left_selection,
+                                    DIFF_LEFT_FG,
+                                    &mut cache.hex.left,
+                                );
+
+                                hex_line_ui(
+                                    ui,
+                                    &options.right,
+                                    right_selection,
+                                    DIFF_RIGHT_FG,
+                                    &mut cache.hex.right,
+                                );
+                            });
+                        });
+                });
+            });
+    }
 
     if left_response.changed() {
         options.left = source_from_aligned_display(&aligned.left);
@@ -342,8 +447,41 @@ fn line_number_editor(
     line_numbers: &str,
     width: f32,
     height: f32,
+    active_line: Option<usize>,
+    active_background: Color32,
 ) {
     let mut line_numbers = line_numbers;
+    let mut layouter = |ui: &Ui, text: &str, wrap_width: f32| {
+        let mut job = LayoutJob::default();
+        let normal = TextFormat {
+            font_id: TextStyle::Monospace.resolve(ui.style()),
+            color: ui.visuals().weak_text_color(),
+            ..Default::default()
+        };
+        let active = TextFormat {
+            font_id: TextStyle::Monospace.resolve(ui.style()),
+            color: TEXT_ON_ACCENT,
+            background: active_background,
+            ..Default::default()
+        };
+
+        for (index, line) in text.split('\n').enumerate() {
+            if index > 0 {
+                job.append("\n", 0.0, normal.clone());
+            }
+
+            let line_number = line.trim().parse::<usize>().ok();
+            let is_active = line_number
+                .zip(active_line)
+                .is_some_and(|(line_number, active_line)| line_number == active_line);
+            let format = if is_active { active.clone() } else { normal.clone() };
+
+            job.append(line, 0.0, format);
+        }
+
+        job.wrap.max_width = wrap_width;
+        ui.fonts(|fonts| fonts.layout_job(job))
+    };
 
     ui.add_sized(
         [width, height],
@@ -353,7 +491,8 @@ fn line_number_editor(
             .font(TextStyle::Monospace)
             .margin(Margin::ZERO)
             .frame(false)
-            .interactive(false),
+            .interactive(false)
+            .layouter(&mut layouter),
     );
 }
 
@@ -390,6 +529,7 @@ fn aligned_diff_layout(
     lines: &[AlignedLine],
     diff: Option<&difftastic::clipboard::ClipboardDiff>,
     side: DiffSide,
+    saved_selection: Option<&Range<usize>>,
 ) -> LayoutJob {
     let monospace = TextStyle::Monospace.resolve(ui.style());
     let mut cells_by_source_line = Vec::new();
@@ -412,14 +552,8 @@ fn aligned_diff_layout(
     }
 
     let (row_background, highlight_background) = match side {
-        DiffSide::Left => (
-            Color32::from_rgb(68, 35, 35),
-            Color32::from_rgb(130, 55, 55),
-        ),
-        DiffSide::Right => (
-            Color32::from_rgb(32, 72, 42),
-            Color32::from_rgb(50, 115, 70),
-        ),
+        DiffSide::Left => (DIFF_LEFT_BG, DIFF_LEFT_FG),
+        DiffSide::Right => (DIFF_RIGHT_BG, DIFF_RIGHT_FG),
     };
 
     let normal = TextFormat {
@@ -443,7 +577,7 @@ fn aligned_diff_layout(
     let highlighted = TextFormat {
         font_id: monospace,
         background: highlight_background,
-        underline: Stroke::new(1.0_f32, Color32::LIGHT_YELLOW),
+        underline: Stroke::new(1.0_f32, DIFF_HIGHLIGHT_UNDERLINE),
         ..Default::default()
     };
 
@@ -494,6 +628,13 @@ fn aligned_diff_layout(
         }
     }
 
+    apply_saved_selection(
+        &mut job,
+        text,
+        saved_selection,
+        DIFF_SELECTION,
+    );
+
     job
 }
 
@@ -508,9 +649,9 @@ fn diff_status_ui(
                 ui.label(RichText::new(result.language()).strong());
 
                 if result.has_changes() {
-                    ui.colored_label(Color32::YELLOW, "changes");
+                    ui.colored_label(STATUS_CHANGED, "changes");
                 } else {
-                    ui.colored_label(Color32::LIGHT_GREEN, "no changes");
+                    ui.colored_label(STATUS_UNCHANGED, "no changes");
                 }
             }
             None if options.left.is_empty() && options.right.is_empty() => {
@@ -519,7 +660,7 @@ fn diff_status_ui(
             }
             None => {
                 ui.label(RichText::new("Text").strong());
-                ui.colored_label(Color32::ORANGE, "not loaded");
+                ui.colored_label(WARNING, "not loaded");
             }
         }
 
@@ -548,110 +689,218 @@ enum DiffSide {
     Right,
 }
 
-fn diff_ui(ui: &mut Ui, cache: &DiffCache) {
-    let Some(result) = &cache.result else {
-        ui.label("Paste text in Edit mode, then select Diff.");
+fn update_saved_selection(
+    ctx: &eframe::egui::Context,
+    editor_id: Id,
+    saved_selection: &mut Option<Range<usize>>,
+    layout_cache: &mut crate::app::cache::DiffPaneGalleyCache,
+) {
+    if !ctx.memory(|memory| memory.has_focus(editor_id)) {
         return;
-    };
+    }
 
-    ScrollArea::vertical()
-        .id_salt("diff.rows.scroll")
-        .auto_shrink([false, false])
-        .show(ui, |ui| {
-            ui.columns(2, |columns| {
-                columns[0].with_layout(
-                    Layout::top_down(Align::LEFT).with_cross_justify(false),
-                    |ui| {
-                        ui.label(RichText::new("Before").strong());
-                    },
-                );
+    let selection = TextEditState::load(ctx, editor_id)
+        .and_then(|state| state.cursor.char_range())
+        .and_then(|range| {
+            let start = range.primary.index.min(range.secondary.index);
+            let end = range.primary.index.max(range.secondary.index);
 
-                columns[1].with_layout(
-                    Layout::top_down(Align::LEFT).with_cross_justify(false),
-                    |ui| {
-                        ui.label(RichText::new("After").strong());
-                    },
-                );
-            });
-
-            ui.separator();
-
-            for row in result.rows() {
-                ui.columns(2, |columns| {
-                    columns[0].with_layout(
-                        Layout::top_down(Align::LEFT).with_cross_justify(false),
-                        |ui| {
-                            diff_cell_ui(
-                                ui,
-                                row.left_line.as_ref(),
-                                Color32::from_rgb(78, 35, 35),
-                                Color32::from_rgb(130, 55, 55),
-                            );
-                        },
-                    );
-
-                    columns[1].with_layout(
-                        Layout::top_down(Align::LEFT).with_cross_justify(false),
-                        |ui| {
-                            diff_cell_ui(
-                                ui,
-                                row.right_line.as_ref(),
-                                Color32::from_rgb(32, 72, 42),
-                                Color32::from_rgb(50, 115, 70),
-                            );
-                        },
-                    );
-                });
-            }
+            (start < end).then_some(start..end)
         });
+
+    if *saved_selection != selection {
+        *saved_selection = selection;
+        layout_cache.clear();
+        ctx.request_repaint();
+    }
 }
 
-fn diff_cell_ui(
+fn source_line_at_cursor(
+    ctx: &eframe::egui::Context,
+    editor_id: eframe::egui::Id,
+    display_text: &str,
+    lines: &[AlignedLine],
+) -> Option<usize> {
+    let state = TextEditState::load(ctx, editor_id)?;
+    let cursor_range = state.cursor.char_range()?;
+
+    hex_selection_from_cursor_range(display_text, lines, cursor_range).line_number
+}
+
+
+fn hex_selection(
+    ctx: &eframe::egui::Context,
+    editor_id: Id,
+    display_text: &str,
+    lines: &[AlignedLine],
+) -> HexSelection {
+    let first_source_line = lines.iter().find_map(|line| line.source_line);
+
+    let Some(state) = TextEditState::load(ctx, editor_id) else {
+        return HexSelection {
+            line_number: first_source_line,
+            byte_range: None,
+        };
+    };
+    let Some(cursor_range) = state.cursor.char_range() else {
+        return HexSelection {
+            line_number: first_source_line,
+            byte_range: None,
+        };
+    };
+
+    let selection = hex_selection_from_cursor_range(display_text, lines, cursor_range);
+
+    if selection.line_number.is_some() {
+        selection
+    } else {
+        HexSelection {
+            line_number: first_source_line,
+            byte_range: None,
+        }
+    }
+}
+
+fn hex_selection_from_cursor_range(
+    display_text: &str,
+    lines: &[AlignedLine],
+    cursor_range: CCursorRange,
+) -> HexSelection {
+    let start = cursor_range.primary.index.min(cursor_range.secondary.index);
+    let end = cursor_range.primary.index.max(cursor_range.secondary.index);
+
+    let line_start = display_text[..char_to_byte_offset(display_text, start)]
+        .rfind('\n')
+        .map_or(0, |offset| offset + 1);
+    let line_end = display_text[line_start..]
+        .find('\n')
+        .map_or(display_text.len(), |offset| line_start + offset);
+
+    let display_line = display_text[..line_start].bytes().filter(|byte| *byte == b'\n').count();
+
+    let Some(source_line) = lines
+        .get(display_line)
+        .and_then(|line| line.source_line)
+    else {
+        return HexSelection::default();
+    };
+
+    let selected_in_line = if start == end {
+        None
+    } else {
+        let selection_start = char_to_byte_offset(display_text, start).max(line_start);
+        let selection_end = char_to_byte_offset(display_text, end).min(line_end);
+
+        (selection_start < selection_end).then_some(
+            selection_start.saturating_sub(line_start)..selection_end.saturating_sub(line_start),
+        )
+    };
+
+    HexSelection {
+        line_number: Some(source_line),
+        byte_range: selected_in_line,
+    }
+}
+
+fn char_to_byte_offset(text: &str, char_offset: usize) -> usize {
+    text.char_indices()
+        .nth(char_offset)
+        .map_or(text.len(), |(byte_offset, _)| byte_offset)
+}
+
+fn source_line_including_newline(source: &str, line_number: usize) -> Option<&str> {
+    if line_number == 0 {
+        return None;
+    }
+
+    source.split_inclusive('\n').nth(line_number - 1)
+}
+
+fn hex_line_ui(
     ui: &mut Ui,
-    cell: Option<&difftastic::clipboard::DiffCell>,
-    row_background: Color32,
-    highlight_background: Color32,
+    source: &str,
+    selection: HexSelection,
+    selection_background: Color32,
+    cache: &mut HexLineCache,
 ) {
-    let Some(cell) = cell else {
-        ui.label(" ");
+    let Some(line_number) = selection.line_number else {
+        ui.monospace("—");
         return;
     };
 
-    let monospace = TextStyle::Monospace.resolve(ui.style());
+    let Some(line) = source_line_including_newline(source, line_number) else {
+        ui.monospace("—");
+        return;
+    };
+
+    if line.len() > MAX_HEX_LINE_BYTES {
+        ui.colored_label(
+            WARNING,
+            format!(
+                "hex view unavailable; line exceeds {} KiB",
+                MAX_HEX_LINE_BYTES / 1024
+            ),
+        );
+        return;
+    }
+
+    cache_hex_line(cache, line_number, line);
+
+    let byte_range = selection
+        .byte_range
+        .and_then(|range| valid_text_range(line, &range));
+
     let mut job = LayoutJob::default();
-
-    job.append(
-        &format!("{:>6}  ", cell.line_number),
-        0.0,
-        TextFormat {
-            font_id: monospace.clone(),
-            color: ui.visuals().weak_text_color(),
-            ..Default::default()
-        },
-    );
-
-    let normal_format = TextFormat {
-        font_id: monospace.clone(),
-        background: if cell.changed { row_background } else { Color32::TRANSPARENT },
+    let normal = TextFormat {
+        font_id: TextStyle::Monospace.resolve(ui.style()),
+        ..Default::default()
+    };
+    let selected = TextFormat {
+        font_id: TextStyle::Monospace.resolve(ui.style()),
+        background: selection_background,
         ..Default::default()
     };
 
-    let highlighted_format = TextFormat {
-        font_id: monospace,
-        background: highlight_background,
-        underline: Stroke::new(1.0_f32, Color32::LIGHT_YELLOW),
-        ..Default::default()
-    };
+    for (byte_offset, text_range) in cache.byte_ranges.iter().enumerate() {
+        let format = if byte_range
+            .as_ref()
+            .is_some_and(|range| range.contains(&byte_offset))
+                { selected.clone() } else { normal.clone() };
+        job.append(&cache.text[text_range.clone()], 0.0, format);
+    }
 
-    append_diff_text(
-        &mut job,
-        &cell.text,
-        &cell.highlights,
-        normal_format,
-        highlighted_format,
+    ui.add(
+        Label::new(job)
+            .wrap_mode(TextWrapMode::Extend)
+            .selectable(true),
     );
+}
 
-    ui.label(job);
+fn cache_hex_line(cache: &mut HexLineCache, line_number: usize, line: &str) {
+    if cache.line_number == Some(line_number) && cache.source_line == line {
+        return;
+    }
+
+    const HEX: &[u8; 16] = b"0123456789ABCDEF";
+
+    cache.line_number = Some(line_number);
+    line.clone_into(&mut cache.source_line);
+
+    cache.text.clear();
+    cache.text.reserve(line.len().saturating_mul(3));
+
+    cache.byte_ranges.clear();
+    cache.byte_ranges.reserve(line.len());
+
+    for &byte in line.as_bytes() {
+        let start = cache.text.len();
+
+        cache.text.push(HEX[(byte >> 4) as usize] as char);
+        cache.text.push(HEX[(byte & 0x0F) as usize] as char);
+        cache.text.push(' ');
+
+        cache.byte_ranges.push(start..cache.text.len());
+    }
 }
 
 fn append_diff_text(
@@ -691,6 +940,57 @@ fn append_diff_text(
     if offset < text.len() {
         job.append(&text[offset..], 0.0, normal_format);
     }
+}
+
+fn apply_saved_selection(
+    job: &mut LayoutJob,
+    text: &str,
+    selection: Option<&Range<usize>>,
+    background: Color32,
+) {
+    let Some(selection) = selection else {
+        return;
+    };
+
+    let selection_start = char_to_byte_offset(text, selection.start);
+    let selection_end = char_to_byte_offset(text, selection.end);
+
+    if selection_start >= selection_end {
+        return;
+    }
+
+    let selection = selection_start..selection_end;
+    let mut sections = Vec::with_capacity(job.sections.len().saturating_add(2));
+
+    for section in job.sections.drain(..) {
+        let start = section.byte_range.start;
+        let end = section.byte_range.end;
+
+        if end <= selection.start || selection.end <= start {
+            sections.push(section);
+            continue;
+        }
+
+        if start < selection.start {
+            let mut before = section.clone();
+            before.byte_range.end = selection.start;
+            sections.push(before);
+        }
+
+        let mut selected = section.clone();
+        selected.byte_range.start = start.max(selection.start);
+        selected.byte_range.end = end.min(selection.end);
+        selected.format.background = background;
+        sections.push(selected);
+
+        if selection.end < end {
+            let mut after = section;
+            after.byte_range.start = selection.end;
+            sections.push(after);
+        }
+    }
+
+    job.sections = sections;
 }
 
 fn valid_text_range(text: &str, range: &Range<usize>) -> Option<Range<usize>> {
@@ -825,6 +1125,7 @@ pub fn aligned_diff(
         &aligned.left.lines,
         Some(result),
         DiffSide::Left,
+        None,
     );
     left_job.wrap.max_width = left_wrap_width;
     left_job.wrap.break_anywhere = true;

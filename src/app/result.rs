@@ -1,5 +1,6 @@
-use eframe::egui::{text, vec2, Align, Color32, Layout, TextStyle, Ui};
+use eframe::egui::{text, vec2, Align, Layout, TextStyle, Ui};
 use crate::app::cache::TextGalleyCache;
+use crate::app::colors::{WARNING, WARNING_TEXT};
 
 #[derive(Clone, Default)]
 pub enum ConvertResult {
@@ -108,7 +109,7 @@ fn render_warning_line(ui: &mut Ui, warning: &str) {
 
     ui.horizontal_wrapped(|ui| {
         ui.spacing_mut().item_spacing.x = 0.0;
-        ui.colored_label(Color32::ORANGE, "warn: ");
-        ui.colored_label(Color32::from_rgb(180, 190, 120), warning);
+        ui.colored_label(WARNING, "warn: ");
+        ui.colored_label(WARNING_TEXT, warning);
     });
 }
