@@ -24,6 +24,7 @@ pub struct DiffToolOptions {
     pub scroll_offset: f32,
     pub change_index: usize,
     pub pending_change_delta: i32,
+    pub pretty_print: bool,
 }
 
 impl Default for DiffToolOptions {
@@ -38,6 +39,7 @@ impl Default for DiffToolOptions {
             scroll_offset: 0.0,
             change_index: usize::MAX,
             pending_change_delta: 0,
+            pretty_print: false,
         }
     }
 }

@@ -80,6 +80,19 @@ impl DiffLanguage {
         }
     }
 
+    pub const fn supports_pretty_print(self) -> bool {
+        matches!(
+            self,
+            Self::Json
+                | Self::Xml
+                | Self::JavaScript
+                | Self::TypeScript
+                | Self::Html
+                | Self::Css
+                | Self::Sql
+        )
+    }
+
     pub const fn virtual_path(self) -> &'static str {
         match self {
             Self::Text => "clipboard.txt",

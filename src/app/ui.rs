@@ -178,6 +178,7 @@ impl App {
         use crate::widgets::diff_editor::MAX_DIFF_INPUT_BYTES;
 
         self.cache.diff.update_deadline = None;
+        self.cache.diff.format_diagnostics = Default::default();
 
         let options = &self.state.options.diff;
 
@@ -217,10 +218,57 @@ impl App {
             (options.language.virtual_path(), None)
         };
 
+        let (left, right, pretty_print_message) =
+            if options.pretty_print && !structural_input_too_large {
+                let formatted = crate::util::formatters::format_diff_inputs(
+                    options.language,
+                    &options.left,
+                    &options.right,
+                );
+
+                self.cache.diff.format_diagnostics.left = formatted.left.diagnostic;
+                self.cache.diff.format_diagnostics.right = formatted.right.diagnostic;
+
+                if self.cache.diff.format_diagnostics.left.is_none()
+                    && self.cache.diff.format_diagnostics.right.is_none()
+                {
+                    (formatted.left.text, formatted.right.text, None)
+                } else {
+                    let details = [
+                        self.cache
+                            .diff
+                            .format_diagnostics
+                            .left
+                            .as_ref()
+                            .map(|diagnostic| format!("left: {}", diagnostic.message)),
+                        self.cache
+                            .diff
+                            .format_diagnostics
+                            .right
+                            .as_ref()
+                            .map(|diagnostic| format!("right: {}", diagnostic.message)),
+                    ]
+                        .into_iter()
+                        .flatten()
+                        .collect::<Vec<_>>()
+                        .join("\n");
+
+                    (
+                        options.left.clone(),
+                        options.right.clone(),
+                        Some(format!(
+                            "pretty print failed; comparing original input\n{details}"
+                        )),
+                    )
+                }
+            } else {
+                (options.left.clone(), options.right.clone(), None)
+            };
+
         self.cache.diff.result = Some(difftastic::clipboard::diff_text(
             virtual_path,
-            &options.left,
-            &options.right,
+            &left,
+            &right,
             difftastic::clipboard::ClipboardDiffOptions {
                 context_lines: options.context_lines,
                 ignore_comments: options.ignore_comments,
@@ -232,7 +280,7 @@ impl App {
         self.cache.diff.aligned = None;
         self.cache.diff.layout.left.clear();
         self.cache.diff.layout.right.clear();
-        self.cache.diff.error = fallback_message;
+        self.cache.diff.error = fallback_message.or(pretty_print_message);
     }
 }
 

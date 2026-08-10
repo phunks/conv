@@ -96,6 +96,7 @@ fn edit_ui(
                     LINE_NUMBER_WIDTH,
                     left_size.y,
                     None,
+                    None,
                     TRANSPARENT,
                 );
 
@@ -118,6 +119,7 @@ fn edit_ui(
                     "",
                     LINE_NUMBER_WIDTH,
                     right_size.y,
+                    None,
                     None,
                     TRANSPARENT,
                 );
@@ -193,6 +195,16 @@ fn edit_ui(
     let right_lines = aligned.right.lines.clone();
     let left_line_numbers = aligned.left.line_numbers.clone();
     let right_line_numbers = aligned.right.line_numbers.clone();
+    let left_diagnostic_line = cache
+        .format_diagnostics
+        .left
+        .as_ref()
+        .and_then(|diagnostic| diagnostic.line);
+    let right_diagnostic_line = cache
+        .format_diagnostics
+        .right
+        .as_ref()
+        .and_then(|diagnostic| diagnostic.line);
     let left_saved_selection = cache.selection.left.clone();
     let right_saved_selection = cache.selection.right.clone();
     let left_layout_cache = &mut cache.layout.left;
@@ -224,6 +236,7 @@ fn edit_ui(
                         LINE_NUMBER_WIDTH,
                         desired_size.y,
                         left_active_line,
+                        left_diagnostic_line,
                         DIFF_LEFT_FG,
                     );
 
@@ -271,6 +284,7 @@ fn edit_ui(
                         LINE_NUMBER_WIDTH,
                         desired_size.y,
                         right_active_line,
+                        right_diagnostic_line,
                         DIFF_RIGHT_FG,
                     );
 
@@ -448,6 +462,7 @@ fn line_number_editor(
     width: f32,
     height: f32,
     active_line: Option<usize>,
+    diagnostic_line: Option<usize>,
     active_background: Color32,
 ) {
     let mut line_numbers = line_numbers;
@@ -464,6 +479,12 @@ fn line_number_editor(
             background: active_background,
             ..Default::default()
         };
+        let diagnostic = TextFormat {
+            font_id: TextStyle::Monospace.resolve(ui.style()),
+            color: ui.visuals().error_fg_color,
+            background: ui.visuals().error_fg_color.gamma_multiply(0.2),
+            ..Default::default()
+        };
 
         for (index, line) in text.split('\n').enumerate() {
             if index > 0 {
@@ -474,7 +495,19 @@ fn line_number_editor(
             let is_active = line_number
                 .zip(active_line)
                 .is_some_and(|(line_number, active_line)| line_number == active_line);
-            let format = if is_active { active.clone() } else { normal.clone() };
+            let is_diagnostic = line_number
+                .zip(diagnostic_line)
+                .is_some_and(|(line_number, diagnostic_line)| {
+                    line_number == diagnostic_line
+                });
+
+            let format = if is_diagnostic {
+                diagnostic.clone()
+            } else if is_active {
+                active.clone()
+            } else {
+                normal.clone()
+            };
 
             job.append(line, 0.0, format);
         }

@@ -402,6 +402,23 @@ fn diff_menu_ui(ui: &mut Ui, state: &mut AppState) -> bool {
     ui.label("language:");
     changed |= combobox(ui, "menu.diff.language", &mut options.language);
 
+    if !options.language.supports_pretty_print() {
+        options.pretty_print = false;
+    }
+
+    let structural_fallback = options
+        .language
+        .structural_diff_input_limit()
+        .is_some_and(|limit| options.left.len() > limit || options.right.len() > limit);
+
+    changed |= ui
+        .add_enabled(
+            options.language.supports_pretty_print() && !structural_fallback,
+            eframe::egui::Checkbox::new(&mut options.pretty_print, "pretty"),
+        )
+        .on_hover_text("format both inputs before comparing them")
+        .changed();
+
     changed |= ui
         .checkbox(&mut options.ignore_comments, "ignore comments")
         .changed();

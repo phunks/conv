@@ -6,6 +6,7 @@ use eframe::egui::{text, Galley, Style, TextFormat, TextStyle, Ui};
 
 use crate::app::result::ConvertResult;
 use crate::app::state::SelectedTool;
+use crate::util::formatters::FormatDiagnostic;
 use crate::widgets::input_editor::LayoutCache;
 
 // Display-only marker indicating a virtual empty line.
@@ -25,10 +26,17 @@ pub struct DiffCache {
     pub result: Option<ClipboardDiff>,
     pub aligned: Option<AlignedDiff>,
     pub error: Option<String>,
+    pub format_diagnostics: DiffFormatDiagnostics,
     pub update_deadline: Option<Instant>,
     pub hex: DiffHexCache,
     pub layout: DiffLayoutCache,
     pub selection: DiffSelectionCache,
+}
+
+#[derive(Default)]
+pub struct DiffFormatDiagnostics {
+    pub left: Option<FormatDiagnostic>,
+    pub right: Option<FormatDiagnostic>,
 }
 
 #[derive(Default)]
