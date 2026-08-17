@@ -1,9 +1,14 @@
+
 use std::time::Duration;
 use std::time::Instant;
-use eframe::egui::{Align, Button, CentralPanel, Context, Layout, ScrollArea, Ui, Visuals};
+use eframe::egui::{Align, Button, CentralPanel, Context, Layout, Response, ScrollArea, Ui, Visuals};
+use egui_json_tree::{DefaultExpand, JsonTree, JsonTreeStyle};
 use crate::app::cache::AppCache;
-use crate::app::state::AppState;
+use crate::app::colors::JsonTreeColorScheme;
+use crate::app::state::{AppState, SelectedTool};
 use crate::converters::Converters;
+use crate::converters::format::formatters::FormatLanguage;
+use crate::widgets::diff_lang::DiffLanguage;
 
 #[derive(Default)]
 pub struct App {
@@ -64,8 +69,10 @@ impl App {
             ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
                 let selected = self.state.selected;
                 let enabled = match selected {
-                    crate::app::state::SelectedTool::Data => {
-                        !self.state.options.data.filter.is_empty()
+                    SelectedTool::Data => {
+                        self.state.options.data.input_format
+                            == crate::widgets::menu::InputFormat::Xml
+                            || !self.state.options.data.filter.is_empty()
                     }
                     _ => self
                         .cache
@@ -81,7 +88,7 @@ impl App {
                     .clicked()
                 {
                     let output = match selected {
-                        crate::app::state::SelectedTool::Data => {
+                        SelectedTool::Data => {
                             self.converters.jq.copy_output_text(&self.state)
                         }
                         _ => self
@@ -94,6 +101,14 @@ impl App {
 
                     if let Some(output) = output {
                         self.state.input = output;
+
+                        if selected == SelectedTool::Data {
+                            let options = &mut self.state.options.data;
+                            let input_format = options.input_format;
+                            options.input_format = options.output_format.into();
+                            options.output_format = input_format.into();
+                        }
+
                         self.cache.outputs.mark_all_dirty();
                     }
                 }
@@ -112,12 +127,19 @@ impl App {
                 ui.with_layout(
                     Layout::top_down(Align::LEFT).with_cross_justify(false),
                     |ui| {
-                        if self.state.selected == crate::app::state::SelectedTool::Data {
+                        if self.state.selected == SelectedTool::Data {
                             self.converters.jq.render(ui, &self.state);
                             return;
                         }
 
                         self.ensure_output();
+
+                        // if self.state.selected == SelectedTool::Format
+                        //     && self.state.options.format.language == FormatLanguage::Json
+                        // {
+                        //     self.format_json_output_ui(ui);
+                        //     return;
+                        // }
 
                         let selected = self.state.selected;
                         let result = &self.cache.outputs.current(selected).result;
@@ -125,6 +147,36 @@ impl App {
                     },
                 );
             });
+    }
+
+    fn format_json_output_ui(&mut self, ui: &mut Ui) {
+        let result = &self
+            .cache
+            .outputs
+            .current(SelectedTool::Format)
+            .result;
+
+        match result {
+            crate::app::result::ConvertResult::Text(text) => {
+                match serde_json::from_str::<serde_json::Value>(text) {
+                    Ok(value) => {
+                        let tree_style = JsonTreeStyle::new()
+                            .visuals(JsonTreeColorScheme::new());
+                        JsonTree::new("format.json_tree", &value)
+                            .style(tree_style)
+                            .default_expand(DefaultExpand::All)
+                            .show(ui);
+                    }
+                    Err(error) => {
+                        ui.colored_label(
+                            ui.visuals().error_fg_color,
+                            format!("formatted JSON could not be parsed: {error}"),
+                        );
+                    }
+                }
+            }
+            _ => result.render(ui, &mut self.cache.output_layout),
+        }
     }
 
     fn ensure_output(&mut self) {
@@ -178,7 +230,6 @@ impl App {
         use crate::widgets::diff_editor::MAX_DIFF_INPUT_BYTES;
 
         self.cache.diff.update_deadline = None;
-        self.cache.diff.format_diagnostics = Default::default();
 
         let options = &self.state.options.diff;
 
@@ -195,7 +246,6 @@ impl App {
         if options.left.is_empty() && options.right.is_empty() {
             self.cache.diff.result = None;
             self.cache.diff.aligned = None;
-            // self.cache.diff.error = Some("paste text into either side to compare".to_owned());
             return;
         }
 
@@ -208,7 +258,7 @@ impl App {
             let limit = structural_input_limit.expect("limit must exist when fallback is enabled");
 
             (
-                "clipboard.txt",
+                DiffLanguage::Text.virtual_path(),
                 Some(format!(
                     "input exceeds {} KiB for this structural diff; showing a plain-text diff",
                     limit / 1024,
@@ -218,57 +268,10 @@ impl App {
             (options.language.virtual_path(), None)
         };
 
-        let (left, right, pretty_print_message) =
-            if options.pretty_print && !structural_input_too_large {
-                let formatted = crate::util::formatters::format_diff_inputs(
-                    options.language,
-                    &options.left,
-                    &options.right,
-                );
-
-                self.cache.diff.format_diagnostics.left = formatted.left.diagnostic;
-                self.cache.diff.format_diagnostics.right = formatted.right.diagnostic;
-
-                if self.cache.diff.format_diagnostics.left.is_none()
-                    && self.cache.diff.format_diagnostics.right.is_none()
-                {
-                    (formatted.left.text, formatted.right.text, None)
-                } else {
-                    let details = [
-                        self.cache
-                            .diff
-                            .format_diagnostics
-                            .left
-                            .as_ref()
-                            .map(|diagnostic| format!("left: {}", diagnostic.message)),
-                        self.cache
-                            .diff
-                            .format_diagnostics
-                            .right
-                            .as_ref()
-                            .map(|diagnostic| format!("right: {}", diagnostic.message)),
-                    ]
-                        .into_iter()
-                        .flatten()
-                        .collect::<Vec<_>>()
-                        .join("\n");
-
-                    (
-                        options.left.clone(),
-                        options.right.clone(),
-                        Some(format!(
-                            "pretty print failed; comparing original input\n{details}"
-                        )),
-                    )
-                }
-            } else {
-                (options.left.clone(), options.right.clone(), None)
-            };
-
         self.cache.diff.result = Some(difftastic::clipboard::diff_text(
             virtual_path,
-            &left,
-            &right,
+            &options.left,
+            &options.right,
             difftastic::clipboard::ClipboardDiffOptions {
                 context_lines: options.context_lines,
                 ignore_comments: options.ignore_comments,
@@ -280,7 +283,39 @@ impl App {
         self.cache.diff.aligned = None;
         self.cache.diff.layout.left.clear();
         self.cache.diff.layout.right.clear();
-        self.cache.diff.error = fallback_message.or(pretty_print_message);
+        self.cache.diff.error = fallback_message;
     }
 }
 
+pub fn handle_file_drop(
+    ui: &Ui,
+    left_response: &Response,
+    right_response: &Response,
+    left_text: &mut String,
+    right_text: &mut String,
+) -> bool {
+    let dropped_files = ui.ctx().input(|input| input.raw.dropped_files.clone());
+
+    if dropped_files.is_empty() {
+        return false;
+    }
+
+    let target_text = if right_response.has_focus() {
+        right_text
+    } else if left_response.has_focus() {
+        left_text
+    } else {
+        return false;
+    };
+
+    for file in dropped_files {
+        if let Some(path) = file.path
+            && let Ok(content) = std::fs::read_to_string(path)
+        {
+            *target_text = content;
+            return true;
+        }
+    }
+
+    false
+}

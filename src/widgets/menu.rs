@@ -9,6 +9,7 @@ use crate::converters::regex;
 use crate::converters::crypt::{
     AesEncDec, AesMode, CryptOptions, CryptOutputFormat, DigestMenu,
 };
+use crate::converters::format::formatters::FormatOptions;
 
 #[derive(Default, Copy, Clone, Debug, PartialEq, Eq, VariantArray, EnumMessage)]
 #[strum(serialize_all = "kebab-case")]
@@ -32,6 +33,9 @@ pub enum Conv {
     /// structured-data converter
     #[strum(message = "Data")]
     Data,
+    /// source formatter
+    #[strum(message = "Format")]
+    Format,
     /// clipboard structural diff
     #[strum(message = "Diff")]
     Diff,
@@ -52,6 +56,9 @@ pub enum InputFormat {
     /// input Csv
     #[strum(message = "CSV")]
     Csv,
+    /// input Xml
+    #[strum(message = "XML")]
+    Xml,
 }
 
 #[derive(Default, Copy, Clone, Debug, PartialEq, Eq, VariantArray, EnumMessage)]
@@ -69,6 +76,33 @@ pub enum OutputFormat {
     /// output Csv
     #[strum(message = "CSV")]
     Csv,
+    /// output Xml
+    #[strum(message = "XML")]
+    Xml,
+}
+
+impl From<InputFormat> for OutputFormat {
+    fn from(format: InputFormat) -> Self {
+        match format {
+            InputFormat::Json => Self::Json,
+            InputFormat::Toml => Self::Toml,
+            InputFormat::Yaml => Self::Yaml,
+            InputFormat::Csv => Self::Csv,
+            InputFormat::Xml => Self::Xml,
+        }
+    }
+}
+
+impl From<OutputFormat> for InputFormat {
+    fn from(format: OutputFormat) -> Self {
+        match format {
+            OutputFormat::Json => Self::Json,
+            OutputFormat::Toml => Self::Toml,
+            OutputFormat::Yaml => Self::Yaml,
+            OutputFormat::Csv => Self::Csv,
+            OutputFormat::Xml => Self::Xml,
+        }
+    }
 }
 
 impl From<SelectedTool> for Conv {
@@ -80,6 +114,7 @@ impl From<SelectedTool> for Conv {
             SelectedTool::Crypt => Self::Crypt,
             SelectedTool::Regex => Self::Regex,
             SelectedTool::Data => Self::Data,
+            SelectedTool::Format => Self::Format,
             SelectedTool::Diff => Self::Diff,
         }
     }
@@ -94,6 +129,7 @@ impl From<Conv> for SelectedTool {
             Conv::Crypt => Self::Crypt,
             Conv::Regex => Self::Regex,
             Conv::Data => Self::Data,
+            Conv::Format => Self::Format,
             Conv::Diff => Self::Diff,
         }
     }
@@ -217,6 +253,7 @@ pub fn menu_ui(ui: &mut Ui, state: &mut AppState) -> bool {
             SelectedTool::Crypt => crypt_menu_ui(ui, &mut state.options.crypt),
             SelectedTool::Regex => regex_menu_ui(ui, state),
             SelectedTool::Data => jq_menu_ui(ui, &mut state.options.data),
+            SelectedTool::Format => format_menu_ui(ui, &mut state.options.format),
             SelectedTool::Diff => diff_menu_ui(ui, state),
         };
 
@@ -372,6 +409,40 @@ fn jq_menu_ui(ui: &mut Ui, options: &mut DataOptions) -> bool {
     changed
 }
 
+fn format_menu_ui(ui: &mut Ui, options: &mut FormatOptions) -> bool {
+    ui.label("language:");
+    combobox(ui, "menu.format.language", &mut options.language)
+}
+
+#[allow(unused)]
+fn data_output_format_ui(ui: &mut Ui, options: &mut DataOptions) -> bool {
+    let mut changed = false;
+
+    ComboBox::from_id_salt("menu.data.output_format")
+        .width(0.0)
+        .selected_text(options.output_format.get_message().unwrap_or_default())
+        .show_ui(ui, |ui| {
+            for variant in OutputFormat::VARIANTS {
+                if *variant == OutputFormat::Xml {
+                    continue;
+                }
+
+                changed |= ui
+                    .selectable_value(
+                        &mut options.output_format,
+                        *variant,
+                        variant.get_message().unwrap_or_default(),
+                    )
+                    .on_hover_text(variant.get_documentation().unwrap_or_default())
+                    .changed();
+            }
+        })
+        .response
+        .on_hover_text(options.output_format.get_documentation().unwrap_or_default());
+
+    changed
+}
+
 fn combobox<T>(ui: &mut Ui, salt: &str, value: &mut T) -> bool
 where
     T: EnumMessage + VariantArray + PartialEq + Clone,
@@ -401,23 +472,6 @@ fn diff_menu_ui(ui: &mut Ui, state: &mut AppState) -> bool {
 
     ui.label("language:");
     changed |= combobox(ui, "menu.diff.language", &mut options.language);
-
-    if !options.language.supports_pretty_print() {
-        options.pretty_print = false;
-    }
-
-    let structural_fallback = options
-        .language
-        .structural_diff_input_limit()
-        .is_some_and(|limit| options.left.len() > limit || options.right.len() > limit);
-
-    changed |= ui
-        .add_enabled(
-            options.language.supports_pretty_print() && !structural_fallback,
-            eframe::egui::Checkbox::new(&mut options.pretty_print, "pretty"),
-        )
-        .on_hover_text("format both inputs before comparing them")
-        .changed();
 
     changed |= ui
         .checkbox(&mut options.ignore_comments, "ignore comments")

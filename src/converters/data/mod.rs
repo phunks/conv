@@ -11,14 +11,17 @@ use std::rc::Rc;
 use bytes::Bytes;
 use jaq_core::data::JustLut;
 use crate::converters::data::csv::CsvOutput;
-use crate::converters::data::json::{append_value, format_compile_errors, format_load_errors, json_key, json_slice, json_string};
+use crate::converters::data::json::{append_value, format_compile_errors, format_load_errors,
+                                    json_key, json_slice, json_string};
 use crate::widgets::menu::{InputFormat, OutputFormat};
 use crate::app::colors::{TEXT_MUTED, WARNING};
+use crate::converters::format::formatters::format_path;
 
 pub(crate) mod format;
 pub(crate) mod csv;
 pub(crate) mod json;
 pub(crate) mod toml;
+pub(crate) mod xml;
 
 #[derive(Clone, PartialEq)]
 pub struct DataOptions {
@@ -52,6 +55,17 @@ pub struct DataFormatConverter {
 
 impl DataFormatConverter {
     pub fn render(&mut self, ui: &mut Ui, state: &AppState) {
+        if let Some(result) = xml_conversion_output(state) {
+            match result {
+                Ok(output) => append_data_text_ui(ui, &output),
+                Err(error) => {
+                    ui.colored_label(WARNING, format!("warn: {error}"));
+                }
+            }
+
+            return;
+        }
+
         if state.options.data.filter.is_empty() {
             return;
         }
@@ -77,6 +91,9 @@ impl DataFormatConverter {
                     Ok(text) => append_data_text(&mut output, &text),
                     Err(error) => format_error = Some(error),
                 },
+                OutputFormat::Xml => {
+                    format_error = Some("XML output requires XML input".to_owned());
+                },
             }
         }) {
             Ok(()) if let Some(error) = format_error => {
@@ -98,6 +115,10 @@ impl DataFormatConverter {
     }
 
     pub fn copy_output_text(&self, state: &AppState) -> Option<String> {
+        if let Some(result) = xml_conversion_output(state) {
+            return result.ok().filter(|output| !output.is_empty());
+        }
+
         if state.options.data.filter.is_empty() {
             return None;
         }
@@ -122,6 +143,9 @@ impl DataFormatConverter {
                     Ok(text) => output.push_str(&text),
                     Err(error) => format_error = Some(error),
                 },
+                OutputFormat::Xml => {
+                    format_error = Some("XML output requires XML input".to_owned());
+                }
             }
         })
             .ok()?;
@@ -141,6 +165,12 @@ impl DataFormatConverter {
 
 impl Converter for DataFormatConverter {
     fn convert(&mut self, state: &AppState) -> ConvertResult {
+        if let Some(result) = xml_conversion_output(state) {
+            return result
+                .map(ConvertResult::Text)
+                .unwrap_or_else(|error| ConvertResult::Error(format!("warn: {error}")));
+        }
+
         if state.options.data.filter.is_empty() {
             return ConvertResult::Empty;
         }
@@ -292,6 +322,101 @@ fn read_inputs<'a>(
             let rows = csv::parse_csv(input).into_iter();
             collect_if(settings.slurp, rows)
         }
+        InputFormat::Xml => unreachable!("XML input is handled before the jq pipeline"),
+    }
+}
+
+fn xml_conversion_output(state: &AppState) -> Option<Result<String, String>> {
+    match (
+        state.options.data.input_format,
+        state.options.data.output_format,
+    ) {
+        (InputFormat::Xml, OutputFormat::Json) => Some(xml_to_json_output(
+            &state.input,
+            state.options.data.compact,
+        )),
+        (InputFormat::Xml, OutputFormat::Xml) => Some(format_xml(&state.input)),
+        (InputFormat::Xml, output_format) => Some(Err(format!(
+            "XML input can currently be converted only to JSON or XML, not {output_format:?}"
+        ))),
+        (InputFormat::Json, OutputFormat::Xml) => Some(json_to_xml_output(
+            &state.input,
+            &state.options.data,
+        )),
+        (_, OutputFormat::Xml) => Some(Err(
+            "XML output currently requires JSON input".to_owned(),
+        )),
+        _ => None,
+    }
+}
+
+fn xml_to_json_output(input: &str, compact: bool) -> Result<String, String> {
+    let value = xml::xml_to_json(input)?;
+
+    if compact {
+        serde_json::to_string(&value).map_err(|error| error.to_string())
+    } else {
+        serde_json::to_string_pretty(&value).map_err(|error| error.to_string())
+    }
+}
+
+fn json_to_xml_output(input: &str, options: &DataOptions) -> Result<String, String> {
+    if options.filter.is_empty() {
+        return Err("jq filter must not be empty".to_owned());
+    }
+
+    let settings = Settings {
+        input_format: InputFormat::Json,
+        slurp: options.slurp,
+        compact: options.compact,
+        ..Default::default()
+    };
+    let mut values = Vec::new();
+
+    run(&options.filter, input, &settings, |value| {
+        values.push(value);
+    })
+        .map_err(format_xml_run_error)?;
+
+    let [value] = values.as_slice() else {
+        return Err(format!(
+            "JSON-to-XML conversion requires exactly one jq result, but the filter produced {}",
+            values.len()
+        ));
+    };
+
+    let value = val_to_serde_json(value)?;
+    xml::json_to_xml(&value)
+}
+
+fn val_to_serde_json(value: &Val) -> Result<serde_json::Value, String> {
+    let settings = Settings {
+        raw_output: false,
+        compact: true,
+        ..Default::default()
+    };
+    let mut output = String::new();
+
+    append_plain_value(&mut output, value, &settings);
+
+    serde_json::from_str(&output).map_err(|error| error.to_string())
+}
+
+fn format_xml_run_error(error: RunError) -> String {
+    match error {
+        RunError::Compile(_) => "invalid jq filter".to_owned(),
+        RunError::Parse(message) => format!("JSON parse error: {message}"),
+        RunError::Jaq(error) => error.to_string(),
+    }
+}
+
+fn format_xml(input: &str) -> Result<String, String> {
+    format_path("input.xml", input)
+}
+
+fn append_data_text_ui(ui: &mut Ui, text: &str) {
+    if !text.is_empty() {
+        ui.label(text);
     }
 }
 
@@ -516,4 +641,23 @@ fn visible_indentation(text: &str, tab_width: usize) -> String {
     }
 
     rendered
+}
+
+#[cfg(test)]
+mod tests {
+    use super::format_xml;
+
+    #[test]
+    fn formats_xml_for_data_output() {
+        let output = format_xml(r#"<root><item id="1">one</item></root>"#)
+            .expect("XML input must be formatted");
+
+        assert!(output.contains("<root>"));
+        assert!(output.contains(r#"<item id="1">one</item>"#));
+    }
+
+    #[test]
+    fn rejects_invalid_xml() {
+        assert!(format_xml("<root><item></root>").is_err());
+    }
 }

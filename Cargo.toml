@@ -9,24 +9,24 @@ readme = "README.md"
 homepage = "https://github.com/phunks/conv"
 repository = "https://github.com/phunks/conv"
 
-#[profile.release]
-#debug = true
-#strip = "none"
-#lto = "thin"
-#codegen-units = 1
-#split-debuginfo = "unpacked"
-
 [profile.release]
-strip = "symbols"
+debug = true
+strip = "none"
+lto = "thin"
+codegen-units = 1
+split-debuginfo = "unpacked"
+
+#[profile.release]
+#strip = "symbols"
 
 [dependencies]
 env_logger = "0.11"
 #eframe = { version = "0.31.1" }
-eframe = { version = "0.31.1", default-features = false, features = [
+eframe = { version = "=0.31.1", default-features = false, features = [
     "default_fonts",
     "glow",
 ] }
-egui_extras = { version = "0.31.1", features = ["all_loaders"] }
+egui_extras = { version = "=0.31.1", features = ["all_loaders", "syntect"] }
 difftastic = { path = "ext/difftastic" }
 strum = { version = "0.28", features = ["derive"] }
 regex = { version = "1.13" }
@@ -48,11 +48,15 @@ jaq-core = { version = "3.1" }
 jaq-std  = { version = "3.0" }
 jaq-json = { version = "2.0" , features = ["serde"] }
 jaq-fmts = { version = "0.1" }
+sxd-xpath = "0.4"
+sxd-document = "0.3"
 codesnake = "=0.2.1"
 unicode-width = "0.2"
 bytes = "1.12.1"
 taplo = "0.14"
-serde_json = "1"
+serde_json = { version = "1" }
+egui_json_tree = "=0.11"
+syntect = "5.3"
 serde-saphyr = "1.0"
 log = "0.4.33"
 quick-xml = "0.41"
@@ -61,9 +65,10 @@ dprint-plugin-typescript = "0.96"
 dprint-plugin-json = "0.23"
 markup_fmt = "0.27"
 malva = "0.16"
+indexmap = { version = "2.14", features = ["serde"] }
 
 [target.'cfg(target_os = "linux")'.dependencies]
-eframe = { version = "0.31.1", default-features = false, features = [
+eframe = { version = "=0.31.1", default-features = false, features = [
     "wayland",
     "x11",
 ] }
@@ -76,3 +81,4 @@ winres = "0.1"
 eframe = { path = "ext/egui/crates/eframe" }
 epaint = { path = "ext/egui/crates/epaint" }
 egui_extras = { path = "ext/egui/crates/egui_extras" }
+egui = { path = "ext/egui/crates/egui" }

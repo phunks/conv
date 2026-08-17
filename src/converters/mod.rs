@@ -8,6 +8,7 @@ pub mod crypt;
 pub mod escape;
 pub mod data;
 pub mod regex;
+pub mod format;
 
 #[derive(Default)]
 pub struct Converters {
@@ -28,6 +29,7 @@ impl Converters {
             SelectedTool::Crypt => crypt::convert(&state.input, &state.options.crypt),
             SelectedTool::Regex => self.regex.convert(state),
             SelectedTool::Data => self.jq.convert(state),
+            SelectedTool::Format => format::formatters::convert(&state.input, &state.options.format),
             SelectedTool::Diff => ConvertResult::Empty,
         }
     }

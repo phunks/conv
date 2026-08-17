@@ -5,11 +5,10 @@ use eframe::egui::{Align, Color32, Frame, Id, Label, Layout, Margin, OutputComma
 use eframe::egui::style::ScrollStyle;
 use eframe::egui::text_edit::TextEditState;
 use log::debug;
-use crate::app::cache::{
-    AlignedDiff, AlignedLine, AlignedPane, DiffCache, HexLineCache, VIRTUAL_LINE_MARKER,
-};
+use crate::app::cache::{AlignedDiff, AlignedLine, AlignedPane, DiffCache, HexLineCache, VIRTUAL_LINE_MARKER};
 use crate::app::colors::{DIFF_RIGHT_BG, DIFF_RIGHT_FG, DIFF_BORDER, DIFF_HIGHLIGHT_UNDERLINE, DIFF_LEFT_BG, DIFF_LEFT_FG, DIFF_SELECTION, STATUS_CHANGED, STATUS_UNCHANGED, TEXT_ON_ACCENT, TRANSPARENT, WARNING};
 use crate::app::state::DiffToolOptions;
+use crate::app::ui::handle_file_drop;
 
 pub const MAX_DIFF_INPUT_BYTES: usize = 1024 * 1024;
 
@@ -53,8 +52,10 @@ fn edit_ui(
     options: &mut DiffToolOptions,
     cache: &mut DiffCache,
 ) -> bool {
+    let mut changed = false;
     const LINE_NUMBER_WIDTH: f32 = 50.0;
     const TEXT_EDIT_HORIZONTAL_MARGIN: f32 = 8.0;
+
     ui.spacing_mut().item_spacing.x = 0.0;
     let columns_width = (ui.available_width() - ui.spacing().item_spacing.x) * 0.5;
     let wrap_width = (
@@ -83,19 +84,20 @@ fn edit_ui(
             ));
     }
 
+
+
     let Some(aligned) = cache.aligned.as_mut() else {
-        ui.columns(2, |columns| {
+        let (left_response, right_response) = ui.columns(2, |columns| {
             let left_size = columns[0].available_size();
             let left_content_width = (left_size.x - LINE_NUMBER_WIDTH).max(0.0);
 
-            columns[0].horizontal_top(|ui| {
+            let left_response = columns[0].horizontal_top(|ui| {
                 line_number_editor(
                     ui,
                     "diff.left.line_numbers",
                     "",
                     LINE_NUMBER_WIDTH,
                     left_size.y,
-                    None,
                     None,
                     TRANSPARENT,
                 );
@@ -106,20 +108,19 @@ fn edit_ui(
                         .id_salt("diff.left.editor")
                         .desired_width(left_content_width)
                         .font(TextStyle::Monospace),
-                );
-            });
+                )
+            }).inner;
 
             let right_size = columns[1].available_size();
             let right_content_width = (right_size.x - LINE_NUMBER_WIDTH).max(0.0);
 
-            columns[1].horizontal_top(|ui| {
+            let right_response = columns[1].horizontal_top(|ui| {
                 line_number_editor(
                     ui,
                     "diff.right.line_numbers",
                     "",
                     LINE_NUMBER_WIDTH,
                     right_size.y,
-                    None,
                     None,
                     TRANSPARENT,
                 );
@@ -130,11 +131,25 @@ fn edit_ui(
                         .id_salt("diff.right.editor")
                         .desired_width(right_content_width)
                         .font(TextStyle::Monospace),
-                );
-            });
+                )
+            }).inner;
+
+            (left_response, right_response)
         });
 
-        return false;
+        changed |= left_response.changed() || right_response.changed();
+
+        if handle_file_drop(
+            ui,
+            &left_response,
+            &right_response,
+            &mut options.left,
+            &mut options.right,
+        ) {
+            return true;
+        }
+
+        return changed;
     };
 
     if aligned.change_markers.is_empty() {
@@ -195,16 +210,6 @@ fn edit_ui(
     let right_lines = aligned.right.lines.clone();
     let left_line_numbers = aligned.left.line_numbers.clone();
     let right_line_numbers = aligned.right.line_numbers.clone();
-    let left_diagnostic_line = cache
-        .format_diagnostics
-        .left
-        .as_ref()
-        .and_then(|diagnostic| diagnostic.line);
-    let right_diagnostic_line = cache
-        .format_diagnostics
-        .right
-        .as_ref()
-        .and_then(|diagnostic| diagnostic.line);
     let left_saved_selection = cache.selection.left.clone();
     let right_saved_selection = cache.selection.right.clone();
     let left_layout_cache = &mut cache.layout.left;
@@ -236,7 +241,6 @@ fn edit_ui(
                         LINE_NUMBER_WIDTH,
                         desired_size.y,
                         left_active_line,
-                        left_diagnostic_line,
                         DIFF_LEFT_FG,
                     );
 
@@ -284,7 +288,6 @@ fn edit_ui(
                         LINE_NUMBER_WIDTH,
                         desired_size.y,
                         right_active_line,
-                        right_diagnostic_line,
                         DIFF_RIGHT_FG,
                     );
 
@@ -357,6 +360,16 @@ fn edit_ui(
         &mut cache.selection.right,
         &mut cache.layout.right,
     );
+
+    if handle_file_drop(
+        ui,
+        &left_response,
+        &right_response,
+        &mut options.left,
+        &mut options.right,
+    ) {
+        return true;
+    }
 
     if options.show_hex {
         let left_selection = hex_selection(
@@ -462,7 +475,6 @@ fn line_number_editor(
     width: f32,
     height: f32,
     active_line: Option<usize>,
-    diagnostic_line: Option<usize>,
     active_background: Color32,
 ) {
     let mut line_numbers = line_numbers;
@@ -479,12 +491,6 @@ fn line_number_editor(
             background: active_background,
             ..Default::default()
         };
-        let diagnostic = TextFormat {
-            font_id: TextStyle::Monospace.resolve(ui.style()),
-            color: ui.visuals().error_fg_color,
-            background: ui.visuals().error_fg_color.gamma_multiply(0.2),
-            ..Default::default()
-        };
 
         for (index, line) in text.split('\n').enumerate() {
             if index > 0 {
@@ -495,15 +501,8 @@ fn line_number_editor(
             let is_active = line_number
                 .zip(active_line)
                 .is_some_and(|(line_number, active_line)| line_number == active_line);
-            let is_diagnostic = line_number
-                .zip(diagnostic_line)
-                .is_some_and(|(line_number, diagnostic_line)| {
-                    line_number == diagnostic_line
-                });
 
-            let format = if is_diagnostic {
-                diagnostic.clone()
-            } else if is_active {
+            let format = if is_active {
                 active.clone()
             } else {
                 normal.clone()

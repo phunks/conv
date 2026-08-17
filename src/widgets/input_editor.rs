@@ -63,6 +63,7 @@ fn option_inputs_ui(ui: &mut Ui, state: &mut AppState) -> bool {
         SelectedTool::Crypt => crypt_inputs_ui(ui, state),
         SelectedTool::Regex => regex_inputs_ui(ui, state),
         SelectedTool::Data => jq_inputs_ui(ui, state),
+        SelectedTool::Format => format_inputs_ui(ui, state),
         SelectedTool::Base64 | SelectedTool::Binary | SelectedTool::Escape | SelectedTool::Diff => {
             false
         }
@@ -134,6 +135,10 @@ fn jq_inputs_ui(ui: &mut Ui, state: &mut AppState) -> bool {
         "jq filter",
         &mut state.options.data.filter,
     )
+}
+
+fn format_inputs_ui(_ui: &mut Ui, _state: &mut AppState) -> bool {
+    false
 }
 
 fn inputbox(ui: &mut Ui, salt: &str, tooltip: &str, text: &mut String) -> bool {

@@ -4,6 +4,7 @@ use crate::converters::crypt::CryptOptions;
 use crate::converters::escape::EscapeOptions;
 use crate::converters::data::DataOptions;
 use crate::converters::regex::RegexOptions;
+use crate::converters::format::formatters::FormatOptions;
 use crate::widgets::diff_lang::DiffLanguage;
 
 #[derive(Default, Clone, PartialEq)]
@@ -24,7 +25,6 @@ pub struct DiffToolOptions {
     pub scroll_offset: f32,
     pub change_index: usize,
     pub pending_change_delta: i32,
-    pub pretty_print: bool,
 }
 
 impl Default for DiffToolOptions {
@@ -39,7 +39,6 @@ impl Default for DiffToolOptions {
             scroll_offset: 0.0,
             change_index: usize::MAX,
             pending_change_delta: 0,
-            pretty_print: false,
         }
     }
 }
@@ -53,11 +52,12 @@ pub enum SelectedTool {
     Crypt,
     Regex,
     Data,
+    Format,
     Diff,
 }
 
 impl SelectedTool {
-    pub const COUNT: usize = 7;
+    pub const COUNT: usize = 8;
 
     pub const fn index(self) -> usize {
         match self {
@@ -67,7 +67,8 @@ impl SelectedTool {
             Self::Crypt => 3,
             Self::Regex => 4,
             Self::Data => 5,
-            Self::Diff => 6,
+            Self::Format => 6,
+            Self::Diff => 7,
         }
     }
 }
@@ -80,6 +81,7 @@ pub struct ToolOptions {
     pub crypt: CryptOptions,
     pub regex: RegexOptions,
     pub data: DataOptions,
+    pub format: FormatOptions,
     pub diff: DiffToolOptions,
 }
 
