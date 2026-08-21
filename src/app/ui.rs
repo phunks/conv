@@ -1,7 +1,7 @@
 
 use std::time::Duration;
 use std::time::Instant;
-use eframe::egui::{Align, Button, CentralPanel, Context, Layout, Response, ScrollArea, Ui, Visuals};
+use eframe::egui::{Align, Button, CentralPanel, Context, Key, Layout, Modifiers, Response, ScrollArea, Ui, Visuals};
 use egui_json_tree::{DefaultExpand, JsonTree, JsonTreeStyle};
 use crate::app::cache::AppCache;
 use crate::app::colors::JsonTreeColorScheme;
@@ -28,8 +28,13 @@ impl eframe::App for App {
 
 impl App {
     fn app_ui(&mut self, ui: &mut Ui) {
-        if self.state.selected == crate::app::state::SelectedTool::Diff {
+        if self.state.selected == SelectedTool::Diff {
             self.diff_ui(ui);
+            return;
+        }
+
+        if self.state.selected == SelectedTool::Spreadsheet {
+            self.spreadsheet_ui(ui);
             return;
         }
 
@@ -54,6 +59,68 @@ impl App {
         });
     }
 
+    fn open_data_csv_in_spreadsheet(&mut self) {
+        let Some(csv) = self.converters.jq.copy_output_text(&self.state) else {
+            return;
+        };
+
+        self.state.options.spreadsheet.open_csv(&csv);
+        self.state.selected = SelectedTool::Spreadsheet;
+        self.cache.output_layout.clear();
+    }
+
+    fn spreadsheet_ui(&mut self, ui: &mut Ui) {
+        let cancel_requested = ui.ctx().input_mut(|input| {
+            input.consume_key(Modifiers::NONE, Key::Escape)
+        });
+
+        if cancel_requested {
+            self.state.selected = SelectedTool::Data;
+            self.cache.output_layout.clear();
+            return;
+        }
+
+        ui.horizontal(|ui| {
+            if ui
+                .button("Cancel")
+                .on_hover_text("return to Data without changing the input")
+                .clicked()
+            {
+                self.state.selected = SelectedTool::Data;
+                self.cache.output_layout.clear();
+            }
+
+            ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                let enabled = self.state.options.spreadsheet.has_table();
+
+                if ui
+                    .add_enabled(enabled, Button::new("← input"))
+                    .on_hover_text("copy the current CSV table to input and return to Data")
+                    .clicked()
+                    && let Ok(csv) = self.state.options.spreadsheet.csv_text()
+                {
+                    self.state.input = csv;
+
+                    let options = &mut self.state.options.data;
+                    let input_format = options.input_format;
+                    options.input_format = options.output_format.into();
+                    options.output_format = input_format.into();
+
+                    self.state.selected = SelectedTool::Data;
+                    self.cache.outputs.mark_all_dirty();
+                    self.cache.output_layout.clear();
+                }
+            });
+        });
+
+        ui.separator();
+
+        crate::widgets::spreadsheet::spreadsheet_ui(
+            ui,
+            &mut self.state.options.spreadsheet,
+        );
+    }
+
     fn input_ui(&mut self, ui: &mut Ui) -> bool {
         crate::widgets::input_editor::input_editor_ui(
             ui,
@@ -68,6 +135,10 @@ impl App {
 
             ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
                 let selected = self.state.selected;
+                let data_outputs_csv = selected == SelectedTool::Data
+                    && self.state.options.data.output_format
+                    == crate::widgets::menu::OutputFormat::Csv;
+
                 let enabled = match selected {
                     SelectedTool::Data => {
                         self.state.options.data.input_format
@@ -88,9 +159,7 @@ impl App {
                     .clicked()
                 {
                     let output = match selected {
-                        SelectedTool::Data => {
-                            self.converters.jq.copy_output_text(&self.state)
-                        }
+                        SelectedTool::Data => self.converters.jq.copy_output_text(&self.state),
                         _ => self
                             .cache
                             .outputs
@@ -110,7 +179,18 @@ impl App {
                         }
 
                         self.cache.outputs.mark_all_dirty();
+                        self.cache.output_layout.clear();
                     }
+                }
+
+                if data_outputs_csv
+                    && ui
+                    .button("Spreadsheet…")
+                    .on_hover_text("open the current CSV output in the spreadsheet")
+                    .clicked()
+                {
+                    self.open_data_csv_in_spreadsheet();
+                    return;
                 }
             });
 

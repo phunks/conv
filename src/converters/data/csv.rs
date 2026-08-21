@@ -89,11 +89,7 @@ pub(crate) fn csv_row(values: &[Val]) -> Result<String, String> {
 }
 
 pub fn parse_csv(input: &str) -> Vec<Result<Val, String>> {
-    let rows = jaq_fmts::read::tabular::read_csv(input.bytes().map(Ok::<_, String>))
-        .map(|row| row.map_err(|error| error.to_string()))
-        .collect::<Result<Vec<_>, _>>();
-
-    let rows = match rows {
+    let rows = match parse_flexible_csv(input) {
         Ok(rows) => rows,
         Err(error) => return vec![Err(error)],
     };
@@ -110,30 +106,108 @@ pub fn parse_csv(input: &str) -> Vec<Result<Val, String>> {
     rows
         .into_iter()
         .skip(1)
-        .map(|row| csv_record(&header, row))
+        .map(|row| {
+            let values = row.into_iter().map(Val::from).collect::<Vec<_>>();
+            csv_record(&header, Val::Arr(Rc::new(values)))
+        })
         .collect()
 }
 
-fn csv_header(row: &Val) -> Result<Vec<String>, String> {
-    let Val::Arr(columns) = row else {
-        return Err("CSV header must be a row".to_owned());
-    };
+pub fn parse_flexible_csv(input: &str) -> Result<Vec<Vec<String>>, String> {
+    let mut records = Vec::new();
+    let mut row = Vec::new();
+    let mut field = String::new();
+    let mut quoted = false;
+    let mut quote_closed = false;
+    let mut record_started = false;
 
+    for character in input.chars() {
+        if quoted {
+            match character {
+                '"' => {
+                    quoted = false;
+                    quote_closed = true;
+                }
+                character => field.push(character),
+            }
+
+            continue;
+        }
+
+        if quote_closed {
+            match character {
+                '"' => {
+                    field.push('"');
+                    quoted = true;
+                    quote_closed = false;
+                }
+                ',' => {
+                    row.push(std::mem::take(&mut field));
+                    quote_closed = false;
+                    record_started = true;
+                }
+                '\r' => {}
+                '\n' => {
+                    row.push(std::mem::take(&mut field));
+                    records.push(std::mem::take(&mut row));
+                    quote_closed = false;
+                    record_started = false;
+                }
+                _ => {
+                    return Err(
+                        "unexpected character after closing quote in CSV field".to_owned(),
+                    );
+                }
+            }
+
+            continue;
+        }
+
+        match character {
+            '"' if field.is_empty() => {
+                quoted = true;
+                record_started = true;
+            }
+            '"' => return Err("unexpected quote in unquoted CSV field".to_owned()),
+            ',' => {
+                row.push(std::mem::take(&mut field));
+                record_started = true;
+            }
+            '\r' => {}
+            '\n' => {
+                row.push(std::mem::take(&mut field));
+                records.push(std::mem::take(&mut row));
+                record_started = false;
+            }
+            character => {
+                field.push(character);
+                record_started = true;
+            }
+        }
+    }
+
+    if quoted {
+        return Err("CSV field has an unclosed quote".to_owned());
+    }
+
+    if record_started || !field.is_empty() || !row.is_empty() {
+        row.push(field);
+        records.push(row);
+    }
+
+    Ok(records)
+}
+
+fn csv_header(columns: &[String]) -> Result<Vec<String>, String> {
     let mut names = Vec::with_capacity(columns.len());
     let mut seen = HashSet::with_capacity(columns.len());
 
-    for column in columns.iter() {
-        let Val::TStr(bytes) = column else {
-            return Err(format!("CSV header must contain strings, found: {column}"));
-        };
-
-        let name = String::from_utf8_lossy(bytes.as_ref()).into_owned();
-
+    for name in columns {
         if !seen.insert(name.clone()) {
             return Err(format!("CSV header contains duplicate column: {name}"));
         }
 
-        names.push(name);
+        names.push(name.clone());
     }
 
     Ok(names)

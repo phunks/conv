@@ -6,6 +6,7 @@ use crate::converters::data::DataOptions;
 use crate::converters::regex::RegexOptions;
 use crate::converters::format::formatters::FormatOptions;
 use crate::widgets::diff_lang::DiffLanguage;
+use crate::widgets::spreadsheet::SpreadsheetOptions;
 
 #[derive(Default, Clone, PartialEq)]
 pub struct AppState {
@@ -54,10 +55,11 @@ pub enum SelectedTool {
     Data,
     Format,
     Diff,
+    Spreadsheet,
 }
 
 impl SelectedTool {
-    pub const COUNT: usize = 8;
+    pub const COUNT: usize = 9;
 
     pub const fn index(self) -> usize {
         match self {
@@ -69,6 +71,7 @@ impl SelectedTool {
             Self::Data => 5,
             Self::Format => 6,
             Self::Diff => 7,
+            Self::Spreadsheet => 8,
         }
     }
 }
@@ -83,5 +86,6 @@ pub struct ToolOptions {
     pub data: DataOptions,
     pub format: FormatOptions,
     pub diff: DiffToolOptions,
+    pub spreadsheet: SpreadsheetOptions,
 }
 

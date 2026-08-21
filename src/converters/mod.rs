@@ -30,7 +30,7 @@ impl Converters {
             SelectedTool::Regex => self.regex.convert(state),
             SelectedTool::Data => self.jq.convert(state),
             SelectedTool::Format => format::formatters::convert(&state.input, &state.options.format),
-            SelectedTool::Diff => ConvertResult::Empty,
+            SelectedTool::Diff | SelectedTool::Spreadsheet => ConvertResult::Empty,
         }
     }
 }

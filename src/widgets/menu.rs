@@ -113,7 +113,7 @@ impl From<SelectedTool> for Conv {
             SelectedTool::Escape => Self::Escape,
             SelectedTool::Crypt => Self::Crypt,
             SelectedTool::Regex => Self::Regex,
-            SelectedTool::Data => Self::Data,
+            SelectedTool::Data | SelectedTool::Spreadsheet => Self::Data,
             SelectedTool::Format => Self::Format,
             SelectedTool::Diff => Self::Diff,
         }
@@ -255,6 +255,7 @@ pub fn menu_ui(ui: &mut Ui, state: &mut AppState) -> bool {
             SelectedTool::Data => jq_menu_ui(ui, &mut state.options.data),
             SelectedTool::Format => format_menu_ui(ui, &mut state.options.format),
             SelectedTool::Diff => diff_menu_ui(ui, state),
+            SelectedTool::Spreadsheet => false,
         };
 
         changed

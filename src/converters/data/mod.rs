@@ -18,7 +18,7 @@ use crate::app::colors::{TEXT_MUTED, WARNING};
 use crate::converters::format::formatters::format_path;
 
 pub(crate) mod format;
-pub(crate) mod csv;
+pub mod csv;
 pub(crate) mod json;
 pub(crate) mod toml;
 pub(crate) mod xml;
@@ -33,6 +33,7 @@ pub struct DataOptions {
     /// compact JSON output (`-c`)
     pub compact: bool,
 }
+
 
 impl Default for DataOptions {
     fn default() -> Self {
