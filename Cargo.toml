@@ -66,6 +66,8 @@ dprint-plugin-json = "0.23"
 markup_fmt = "0.27"
 malva = "0.16"
 indexmap = { version = "2.14", features = ["serde"] }
+polars = { version = "0.55", features = ["lazy", "polars-lazy", "dtype-full", "pivot", "polars-ops"] }
+polars-ops = "0.55.2"
 
 [target.'cfg(target_os = "linux")'.dependencies]
 eframe = { version = "=0.31.1", default-features = false, features = [
