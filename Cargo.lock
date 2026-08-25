@@ -1434,9 +1434,9 @@ dependencies = [
 
 [[package]]
 name = "dprint-core"
-version = "0.68.3"
+version = "0.68.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "404a8244bd1d64468dabfbd935ea9f66fd92956f7a12b9632807538736e6b9e4"
+checksum = "ace8a07022e292c498f9568c6859f73e40721fa18c4c0760cdc56220f4b99040"
 dependencies = [
  "bumpalo",
  "hashbrown 0.15.5",
@@ -1462,7 +1462,7 @@ version = "0.23.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1d6ea7c6e725594aef11d5c74e3c20a253b06cd2384c652aadf8baf09c276e97"
 dependencies = [
- "dprint-core 0.68.3",
+ "dprint-core 0.68.5",
  "dprint-core-macros",
  "jsonc-parser",
  "serde",
@@ -1488,9 +1488,9 @@ dependencies = [
 
 [[package]]
 name = "dprint-swc-ext"
-version = "0.26.0"
+version = "0.26.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "33175ddb7a6d418589cab2966bd14a710b3b1139459d3d5ca9edf783c4833f4c"
+checksum = "661f154a87e7459f54a2f4a1c615661a416a822b4a9e3ad0491dce2bd080421f"
 dependencies = [
  "allocator-api2",
  "bumpalo",
@@ -2293,9 +2293,9 @@ dependencies = [
 
 [[package]]
 name = "h2"
-version = "0.4.18"
+version = "0.4.19"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "839c0e8a181239723652be9062bb56ca5bf5f64011f73b623f6f4fc59086a228"
+checksum = "ef8e5e5a340588f4452631496976cf8636d4a7ecf600239fdc27615d2530bc16"
 dependencies = [
  "atomic-waker",
  "bytes",
@@ -2574,7 +2574,7 @@ dependencies = [
  "js-sys",
  "log",
  "wasm-bindgen",
- "windows-core 0.62.2",
+ "windows-core 0.58.0",
 ]
 
 [[package]]
@@ -2776,9 +2776,9 @@ checksum = "6a756c3fac73139e83f14c2d742155dd2b78d3ee56597b419a0579b7bdd6dd78"
 
 [[package]]
 name = "is-macro"
-version = "0.3.7"
+version = "0.3.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1d57a3e447e24c22647738e4607f1df1e0ec6f72e16182c4cd199f647cdfb0e4"
+checksum = "8267aa6001e25494f3015f9663bbd88a18240c74483afa5f0934a1b3e4c388e9"
 dependencies = [
  "heck",
  "proc-macro2",

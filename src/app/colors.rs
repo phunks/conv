@@ -1,5 +1,4 @@
 use eframe::egui::Color32;
-use egui_json_tree::JsonTreeVisuals;
 
 pub(crate) const WARNING: Color32 = Color32::ORANGE;
 pub(crate) const WARNING_TEXT: Color32 = Color32::from_rgb(180, 190, 120);
@@ -28,17 +27,3 @@ pub(crate) const DIFF_BORDER: Color32 = Color32::GRAY;
 pub(crate) const STATUS_CHANGED: Color32 = Color32::from_rgb(198, 255, 45);
 pub(crate) const STATUS_UNCHANGED: Color32 = Color32::from_rgb(0, 238, 58);
 
-pub struct JsonTreeColorScheme;
-impl JsonTreeColorScheme {
-    pub(crate) fn new() -> JsonTreeVisuals {
-        JsonTreeVisuals {
-            object_key_color: JSON_KEY,
-            array_idx_color: TEXT_MUTED,
-            bool_color: JSON_BOOLEAN,
-            number_color: JSON_NUMBER,
-            string_color: JSON_STRING,
-            null_color: JSON_NULL,
-            ..Default::default()
-        }
-    }
-}

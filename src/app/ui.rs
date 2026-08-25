@@ -2,12 +2,9 @@
 use std::time::Duration;
 use std::time::Instant;
 use eframe::egui::{Align, Button, CentralPanel, Context, Key, Layout, Modifiers, Response, ScrollArea, Ui, Visuals};
-use egui_json_tree::{DefaultExpand, JsonTree, JsonTreeStyle};
 use crate::app::cache::AppCache;
-use crate::app::colors::JsonTreeColorScheme;
 use crate::app::state::{AppState, SelectedTool};
 use crate::converters::Converters;
-use crate::converters::format::formatters::FormatLanguage;
 use crate::widgets::diff_lang::DiffLanguage;
 
 #[derive(Default)]
@@ -194,7 +191,6 @@ impl App {
                     .clicked()
                 {
                     self.open_data_csv_in_spreadsheet();
-                    return;
                 }
             });
 
@@ -218,49 +214,12 @@ impl App {
 
                         self.ensure_output();
 
-                        // if self.state.selected == SelectedTool::Format
-                        //     && self.state.options.format.language == FormatLanguage::Json
-                        // {
-                        //     self.format_json_output_ui(ui);
-                        //     return;
-                        // }
-
                         let selected = self.state.selected;
                         let result = &self.cache.outputs.current(selected).result;
                         result.render(ui, &mut self.cache.output_layout);
                     },
                 );
             });
-    }
-
-    fn format_json_output_ui(&mut self, ui: &mut Ui) {
-        let result = &self
-            .cache
-            .outputs
-            .current(SelectedTool::Format)
-            .result;
-
-        match result {
-            crate::app::result::ConvertResult::Text(text) => {
-                match serde_json::from_str::<serde_json::Value>(text) {
-                    Ok(value) => {
-                        let tree_style = JsonTreeStyle::new()
-                            .visuals(JsonTreeColorScheme::new());
-                        JsonTree::new("format.json_tree", &value)
-                            .style(tree_style)
-                            .default_expand(DefaultExpand::All)
-                            .show(ui);
-                    }
-                    Err(error) => {
-                        ui.colored_label(
-                            ui.visuals().error_fg_color,
-                            format!("formatted JSON could not be parsed: {error}"),
-                        );
-                    }
-                }
-            }
-            _ => result.render(ui, &mut self.cache.output_layout),
-        }
     }
 
     fn ensure_output(&mut self) {

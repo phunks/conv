@@ -1,6 +1,7 @@
 use eframe::egui::{self, ComboBox, ScrollArea, Ui};
 use egui_extras::{Column, TableBuilder};
 use jaq_json::Val;
+use regex::Regex;
 use crate::converters::data::csv::parse_flexible_csv;
 use crate::widgets::pivot::{pivot_csv_table, pivot_window_ui, PivotConfig, MAX_PIVOT_OUTPUT_COLUMNS};
 
@@ -11,6 +12,7 @@ pub struct SpreadsheetOptions {
     attempted_load: bool,
     has_header: bool,
     sort_keys: [Option<SortKey>; SORT_KEY_SLOTS],
+    sort_error: Option<String>,
     filters: Vec<ColumnFilter>,
     active_filter_column: Option<usize>,
     filter_before_edit: Option<ColumnFilter>,
@@ -27,7 +29,8 @@ impl Default for SpreadsheetOptions {
         Self {
             attempted_load: false,
             has_header: true,
-            sort_keys: [None; SORT_KEY_SLOTS],
+            sort_keys: empty_sort_keys(),
+            sort_error: None,
             filters: Vec::new(),
             active_filter_column: None,
             filter_before_edit: None,
@@ -179,10 +182,77 @@ impl SortDirection {
     }
 }
 
-#[derive(Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, Copy, Default, PartialEq, Eq)]
+enum CaptureSortMode {
+    #[default]
+    Number,
+    Text,
+}
+
+impl CaptureSortMode {
+    const fn label(self) -> &'static str {
+        match self {
+            Self::Number => "number",
+            Self::Text => "text",
+        }
+    }
+}
+
+#[derive(Clone, PartialEq, Eq)]
 struct SortKey {
     column: usize,
     direction: SortDirection,
+    capture_pattern: String,
+    capture_mode: CaptureSortMode,
+}
+
+struct CompiledSortKey {
+    column: usize,
+    direction: SortDirection,
+    capture_regex: Option<Regex>,
+    capture_mode: CaptureSortMode,
+}
+
+fn empty_sort_keys() -> [Option<SortKey>; SORT_KEY_SLOTS] {
+    std::array::from_fn(|_| None)
+}
+
+fn compile_sort_keys(keys: &[SortKey]) -> Result<Vec<CompiledSortKey>, String> {
+    keys.iter()
+        .map(|key| {
+            let pattern = key.capture_pattern.trim();
+
+            let capture_regex = if pattern.is_empty() {
+                None
+            } else {
+                let regex = Regex::new(pattern)
+                    .map_err(|error| format!("invalid sort capture regex `{pattern}`: {error}"))?;
+
+                if regex.captures_len() < 2 {
+                    return Err(format!(
+                        "sort capture regex `{pattern}` must contain a capture group, such as `第(\\d+)章`"
+                    ));
+                }
+
+                Some(regex)
+            };
+
+            Ok(CompiledSortKey {
+                column: key.column,
+                direction: key.direction,
+                capture_regex,
+                capture_mode: key.capture_mode,
+            })
+        })
+        .collect()
+}
+
+fn sort_indicator(keys: &[Option<SortKey>], column: usize) -> Option<(usize, SortDirection)> {
+    keys.iter()
+        .flatten()
+        .enumerate()
+        .find(|(_, key)| key.column == column)
+        .map(|(index, key)| (index + 1, key.direction))
 }
 
 impl CsvTable {
@@ -201,25 +271,37 @@ impl CsvTable {
         Ok(output)
     }
 
-    fn sort_by_keys(&mut self, keys: &[SortKey]) {
+    fn sort_by_keys(&mut self, keys: &[CompiledSortKey]) {
         self.rows.sort_by(|left, right| {
             for key in keys {
                 let left_value = &left[key.column];
                 let right_value = &right[key.column];
 
-                let order = match (left_value.is_empty(), right_value.is_empty()) {
-                    (true, true) => std::cmp::Ordering::Equal,
-                    (true, false) => std::cmp::Ordering::Greater,
-                    (false, true) => std::cmp::Ordering::Less,
-                    (false, false) => left_value.to_lowercase().cmp(&right_value.to_lowercase()),
+                let (order, reverse_for_descending) = match &key.capture_regex {
+                    Some(regex) => match key.capture_mode {
+                        CaptureSortMode::Number => {
+                            compare_captured_numbers(left_value, right_value, regex)
+                        }
+                        CaptureSortMode::Text => {
+                            compare_captured_text(left_value, right_value, regex)
+                        }
+                    },
+                    None => {
+                        let order = match (left_value.is_empty(), right_value.is_empty()) {
+                            (true, true) => std::cmp::Ordering::Equal,
+                            (true, false) => std::cmp::Ordering::Greater,
+                            (false, true) => std::cmp::Ordering::Less,
+                            (false, false) => compare_sort_values(left_value, right_value),
+                        };
+
+                        (order, !left_value.is_empty() && !right_value.is_empty())
+                    }
                 };
 
                 let order = match key.direction {
                     SortDirection::Ascending => order,
-                    SortDirection::Descending if left_value.is_empty() || right_value.is_empty() => {
-                        order
-                    }
-                    SortDirection::Descending => order.reverse(),
+                    SortDirection::Descending if reverse_for_descending => order.reverse(),
+                    SortDirection::Descending => order,
                 };
 
                 if order != std::cmp::Ordering::Equal {
@@ -231,6 +313,7 @@ impl CsvTable {
         });
     }
 
+    #[allow(unused)]
     fn sort_by_column(&mut self, column: usize, direction: SortDirection) {
         self.rows.sort_by(|left, right| {
             let left = &left[column];
@@ -249,6 +332,66 @@ impl CsvTable {
                 SortDirection::Descending => order.reverse(),
             }
         });
+    }
+}
+
+fn compare_captured_numbers(
+    left: &str,
+    right: &str,
+    regex: &Regex,
+) -> (std::cmp::Ordering, bool) {
+    let left_number = regex
+        .captures(left)
+        .and_then(|captures| captures.get(1))
+        .and_then(|capture| parse_filter_number(capture.as_str()));
+
+    let right_number = regex
+        .captures(right)
+        .and_then(|captures| captures.get(1))
+        .and_then(|capture| parse_filter_number(capture.as_str()));
+
+    match (left_number, right_number) {
+        (Some(left), Some(right)) => (left.total_cmp(&right), true),
+        (Some(_), None) => (std::cmp::Ordering::Less, false),
+        (None, Some(_)) => (std::cmp::Ordering::Greater, false),
+        (None, None) => (left.to_lowercase().cmp(&right.to_lowercase()), true),
+    }
+}
+
+fn compare_captured_text(
+    left: &str,
+    right: &str,
+    regex: &Regex,
+) -> (std::cmp::Ordering, bool) {
+    let left_text = regex
+        .captures(left)
+        .and_then(|captures| captures.get(1))
+        .map(|capture| capture.as_str());
+
+    let right_text = regex
+        .captures(right)
+        .and_then(|captures| captures.get(1))
+        .map(|capture| capture.as_str());
+
+    match (left_text, right_text) {
+        (Some(left), Some(right)) => (left.to_lowercase().cmp(&right.to_lowercase()), true),
+        (Some(_), None) => (std::cmp::Ordering::Less, false),
+        (None, Some(_)) => (std::cmp::Ordering::Greater, false),
+        (None, None) => (left.to_lowercase().cmp(&right.to_lowercase()), true),
+    }
+}
+
+fn compare_sort_values(left: &str, right: &str) -> std::cmp::Ordering {
+    match (
+        left.trim().parse::<f64>(),
+        right.trim().parse::<f64>(),
+    ) {
+        (Ok(left_number), Ok(right_number))
+        if left_number.is_finite() && right_number.is_finite() =>
+            {
+                left_number.total_cmp(&right_number)
+            }
+        _ => left.to_lowercase().cmp(&right.to_lowercase()),
     }
 }
 
@@ -281,7 +424,8 @@ impl SpreadsheetOptions {
     }
 
     pub fn open_csv(&mut self, csv: &str) {
-        self.sort_keys = [None; SORT_KEY_SLOTS];
+        self.sort_keys = empty_sort_keys();
+        self.sort_error = None;
         self.filters.clear();
         self.active_filter_column = None;
         self.filter_before_edit = None;
@@ -300,8 +444,10 @@ impl SpreadsheetOptions {
         self.ensure_filter_slots(source.headers.len());
         self.table = Some(source);
         self.filters.fill(ColumnFilter::default());
-        self.sort_keys = [None; SORT_KEY_SLOTS];
+        self.sort_keys = empty_sort_keys();
+        self.sort_error = None;
         self.active_filter_column = None;
+        self.filter_before_edit = None;
         self.pivot_config = PivotConfig::default();
         self.pivot_error = None;
     }
@@ -361,8 +507,10 @@ impl SpreadsheetOptions {
 
         self.ensure_filter_slots(output.headers.len());
         self.filters.fill(ColumnFilter::default());
-        self.sort_keys = [None; SORT_KEY_SLOTS];
+        self.sort_keys = empty_sort_keys();
+        self.sort_error = None;
         self.active_filter_column = None;
+        self.filter_before_edit = None;
         self.table = Some(output);
         self.pivot_error = None;
 
@@ -393,6 +541,7 @@ impl SpreadsheetOptions {
             .collect()
     }
 
+    #[allow(unused)]
     fn ensure_loaded(&mut self, input: &str) {
         if !self.attempted_load {
             self.load_csv(input);
@@ -408,24 +557,39 @@ impl SpreadsheetOptions {
 
         let mut keys = Vec::with_capacity(SORT_KEY_SLOTS);
 
-        for key in self.sort_keys.iter().flatten().copied() {
-            if key.column < column_count && !keys.iter().any(|existing: &SortKey| {
-                existing.column == key.column
-            }) {
+        for key in self.sort_keys.iter().flatten().cloned() {
+            if key.column < column_count
+                && !keys.iter().any(|existing: &SortKey| existing.column == key.column)
+            {
                 keys.push(key);
             }
         }
 
+        self.sort_error = None;
+
+        let compiled_keys = match compile_sort_keys(&keys) {
+            Ok(keys) => keys,
+            Err(error) => {
+                self.sort_error = Some(error);
+                return;
+            }
+        };
+
         if let Some(table) = &mut self.table
-            && !keys.is_empty()
+            && !compiled_keys.is_empty()
         {
-            table.sort_by_keys(&keys);
+            table.sort_by_keys(&compiled_keys);
         }
     }
 
     fn sort_by_column(&mut self, column: usize, direction: SortDirection) {
         self.sort_keys = [
-            Some(SortKey { column, direction }),
+            Some(SortKey {
+                column,
+                direction,
+                capture_pattern: String::new(),
+                capture_mode: CaptureSortMode::Number,
+            }),
             None,
             None,
         ];
@@ -435,6 +599,7 @@ impl SpreadsheetOptions {
     fn load_csv(&mut self, input: &str) {
         self.attempted_load = true;
         self.error = None;
+        self.sort_error = None;
         self.pivot_source = None;
         self.pivot_config = PivotConfig::default();
         self.pivot_window_open = false;
@@ -470,10 +635,9 @@ pub fn spreadsheet_ui(ui: &mut Ui, options: &mut SpreadsheetOptions) {
             .on_hover_text("treat the first CSV record as column names")
             .changed();
 
-        if reload_requested || header_changed {
-            if let Ok(csv) = options.csv_text() {
+        if (reload_requested || header_changed)
+            && let Ok(csv) = options.csv_text() {
                 options.load_csv(&csv);
-            }
         }
 
         let has_table = options.table.is_some();
@@ -543,6 +707,7 @@ pub fn spreadsheet_ui(ui: &mut Ui, options: &mut SpreadsheetOptions) {
     let mut sort_request = None;
     let mut filter_request = None;
     let max_scroll_height = ui.available_height();
+    let sort_keys = options.sort_keys.clone();
 
     {
         let filters = &mut options.filters;
@@ -585,7 +750,18 @@ pub fn spreadsheet_ui(ui: &mut Ui, options: &mut SpreadsheetOptions) {
                                         filter_request = Some(column);
                                     }
 
-                                    ui.menu_button("⋮", |ui| {
+                                    let sort_button_label =
+                                        match sort_indicator(&sort_keys, column) {
+                                            Some((priority, SortDirection::Ascending)) => {
+                                                format!("⋮↑{priority}")
+                                            }
+                                            Some((priority, SortDirection::Descending)) => {
+                                                format!("⋮↓{priority}")
+                                            }
+                                            None => "⋮".to_owned(),
+                                        };
+
+                                    ui.menu_button(sort_button_label, |ui| {
                                         if ui.button("Sort ascending").clicked() {
                                             sort_request = Some((column, SortDirection::Ascending));
                                             ui.close_menu();
@@ -765,6 +941,7 @@ fn filter_window_ui(ui: &mut Ui, options: &mut SpreadsheetOptions) {
     }
 }
 
+#[allow(unused)]
 fn column_menu_ui(ui: &mut Ui, filters: &mut [ColumnFilter], column: usize) {
     let filter = &mut filters[column];
     let active = filter.is_active();
@@ -827,9 +1004,18 @@ fn sort_menu_ui(ui: &mut Ui, options: &mut SpreadsheetOptions, headers: &[String
         ui.label("Sort rows by:");
 
         for slot in 0..SORT_KEY_SLOTS {
-            let mut column = options.sort_keys[slot].map(|key| key.column);
+            let mut column = options.sort_keys[slot].as_ref().map(|key| key.column);
             let mut direction = options.sort_keys[slot]
+                .as_ref()
                 .map(|key| key.direction)
+                .unwrap_or_default();
+            let mut capture_pattern = options.sort_keys[slot]
+                .as_ref()
+                .map(|key| key.capture_pattern.clone())
+                .unwrap_or_default();
+            let mut capture_mode = options.sort_keys[slot]
+                .as_ref()
+                .map(|key| key.capture_mode)
                 .unwrap_or_default();
 
             ui.horizontal(|ui| {
@@ -868,18 +1054,63 @@ fn sort_menu_ui(ui: &mut Ui, options: &mut SpreadsheetOptions, headers: &[String
                     });
             });
 
-            options.sort_keys[slot] = column.map(|column| SortKey { column, direction });
+            if column.is_some() {
+                ui.horizontal(|ui| {
+                    ComboBox::from_id_salt(("spreadsheet.sort.capture_mode", slot))
+                        .width(60.0)
+                        .selected_text(capture_mode.label())
+                        .show_ui(ui, |ui| {
+                            ui.selectable_value(
+                                &mut capture_mode,
+                                CaptureSortMode::Number,
+                                CaptureSortMode::Number.label(),
+                            );
+                            ui.selectable_value(
+                                &mut capture_mode,
+                                CaptureSortMode::Text,
+                                CaptureSortMode::Text.label(),
+                            );
+                        });
+
+                    ui.add(
+                        egui::TextEdit::singleline(&mut capture_pattern)
+                            .id_salt(("spreadsheet.sort.capture_pattern", slot))
+                            .hint_text("Capture regex, e.g. 第(\\d+)章")
+                            .desired_width(f32::INFINITY),
+                    )
+                        .on_hover_text(
+                            "The first capture group is used for sorting. Leave blank for automatic sorting.",
+                        );
+                });
+            }
+
+            options.sort_keys[slot] = column.map(|column| SortKey {
+                column,
+                direction,
+                capture_pattern,
+                capture_mode,
+            });
+
+            ui.add_space(4.0);
+        }
+
+        if let Some(error) = &options.sort_error {
+            ui.colored_label(ui.visuals().error_fg_color, error);
         }
 
         ui.separator();
 
         if ui.button("Apply sort").clicked() {
             options.apply_sort();
-            ui.close_menu();
+
+            if options.sort_error.is_none() {
+                ui.close_menu();
+            }
         }
 
         if ui.button("Clear criteria").clicked() {
-            options.sort_keys = [None; SORT_KEY_SLOTS];
+            options.sort_keys = empty_sort_keys();
+            options.sort_error = None;
         }
 
         ui.separator();
@@ -892,6 +1123,30 @@ fn sort_menu_ui(ui: &mut Ui, options: &mut SpreadsheetOptions, headers: &[String
     });
 }
 
+fn normalize_csv_headers(source: &[String]) -> Vec<String> {
+    let mut headers = Vec::with_capacity(source.len());
+
+    for (index, header) in source.iter().enumerate() {
+        let base_name = if header.trim().is_empty() {
+            format!("Column {}", index + 1)
+        } else {
+            header.clone()
+        };
+
+        let mut name = base_name.clone();
+        let mut duplicate_number = 2;
+
+        while headers.contains(&name) {
+            name = format!("{base_name} ({duplicate_number})");
+            duplicate_number += 1;
+        }
+
+        headers.push(name);
+    }
+
+    headers
+}
+
 fn parse_csv_table(input: &str, has_header: bool) -> Result<CsvTable, String> {
     let records = parse_flexible_csv(input)?;
 
@@ -902,7 +1157,7 @@ fn parse_csv_table(input: &str, has_header: bool) -> Result<CsvTable, String> {
     let column_count = first_row.len();
 
     let headers = if has_header {
-        first_row.clone()
+        normalize_csv_headers(first_row)
     } else {
         (1..=column_count)
             .map(|index| format!("Column {index}"))
@@ -933,7 +1188,7 @@ fn parse_csv_table(input: &str, has_header: bool) -> Result<CsvTable, String> {
 }
 
 
-fn filter_button(ui: &mut Ui, column: usize, active: bool) -> egui::Response {
+fn filter_button(ui: &mut Ui, _column: usize, active: bool) -> egui::Response {
     let response = ui.add_sized(
         [20.0, 20.0],
         egui::Button::new("")
