@@ -13,6 +13,7 @@ pub struct SpreadsheetOptions {
     sort_keys: [Option<SortKey>; SORT_KEY_SLOTS],
     filters: Vec<ColumnFilter>,
     active_filter_column: Option<usize>,
+    filter_before_edit: Option<ColumnFilter>,
     pub(crate) table: Option<CsvTable>,
     pub(crate) pivot_source: Option<CsvTable>,
     pub(crate) pivot_config: PivotConfig,
@@ -29,6 +30,7 @@ impl Default for SpreadsheetOptions {
             sort_keys: [None; SORT_KEY_SLOTS],
             filters: Vec::new(),
             active_filter_column: None,
+            filter_before_edit: None,
             table: None,
             pivot_source: None,
             pivot_config: PivotConfig::default(),
@@ -264,10 +266,25 @@ impl SpreadsheetOptions {
         self.table.is_some()
     }
 
+    pub(crate) fn cancel_active_filter(&mut self) -> bool {
+        let Some(column) = self.active_filter_column.take() else {
+            return false;
+        };
+
+        if let Some(filter) = self.filter_before_edit.take()
+            && let Some(current_filter) = self.filters.get_mut(column)
+        {
+            *current_filter = filter;
+        }
+
+        true
+    }
+
     pub fn open_csv(&mut self, csv: &str) {
         self.sort_keys = [None; SORT_KEY_SLOTS];
         self.filters.clear();
         self.active_filter_column = None;
+        self.filter_before_edit = None;
         self.pivot_source = None;
         self.pivot_config = PivotConfig::default();
         self.pivot_window_open = false;
@@ -607,6 +624,7 @@ pub fn spreadsheet_ui(ui: &mut Ui, options: &mut SpreadsheetOptions) {
 
     if let Some(column) = filter_request {
         options.active_filter_column = Some(column);
+        options.filter_before_edit = Some(options.filters[column].clone());
     }
 
     if let Some((column, direction)) = sort_request {
@@ -637,6 +655,7 @@ fn filter_window_ui(ui: &mut Ui, options: &mut SpreadsheetOptions) {
 
     egui::Window::new(format!("Filter: {header}"))
         .id(egui::Id::new(("spreadsheet.filter.window", column)))
+        .anchor(egui::Align2::CENTER_CENTER, egui::Vec2::ZERO)
         .collapsible(false)
         .resizable(false)
         .default_width(260.0)
@@ -742,6 +761,7 @@ fn filter_window_ui(ui: &mut Ui, options: &mut SpreadsheetOptions) {
 
     if !open {
         options.active_filter_column = None;
+        options.filter_before_edit = None;
     }
 }
 

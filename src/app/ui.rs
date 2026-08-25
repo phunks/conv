@@ -70,11 +70,15 @@ impl App {
     }
 
     fn spreadsheet_ui(&mut self, ui: &mut Ui) {
-        let cancel_requested = ui.ctx().input_mut(|input| {
+        let escape_pressed = ui.ctx().input_mut(|input| {
             input.consume_key(Modifiers::NONE, Key::Escape)
         });
 
-        if cancel_requested {
+        if escape_pressed {
+            if self.state.options.spreadsheet.cancel_active_filter() {
+                return;
+            }
+
             self.state.selected = SelectedTool::Data;
             self.cache.output_layout.clear();
             return;
